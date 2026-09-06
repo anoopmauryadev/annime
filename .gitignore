@@ -23,6 +23,7 @@
 # misc
 .DS_Store
 *.pem
+.chrome-tmp/
 
 # debug
 npm-debug.log*
@@ -39,3 +40,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# database (keep on server, backup separately)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# uploaded videos & HLS (too large for git)
+public/uploads/videos/
+public/uploads/hls/
+public/uploads/*.png
+public/uploads/*.jpg
+public/uploads/*.webp
