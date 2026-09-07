@@ -60,35 +60,6 @@ export default function MaintenancePage() {
           position: 'relative',
           overflow: 'hidden',
         }}>
-          {/* Top-right Admin Login button */}
-          <a
-            href="/admin/login"
-            style={{
-              position: 'absolute',
-              top: '20px',
-              right: '20px',
-              zIndex: 30,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 16px',
-              borderRadius: '10px',
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
-              color: 'rgba(255, 255, 255, 0.65)',
-              fontSize: '13px',
-              fontWeight: 500,
-              textDecoration: 'none',
-              backdropFilter: 'blur(10px)',
-              transition: 'all 0.2s ease',
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            </svg>
-            Admin Login
-          </a>
-
           {/* Animated background gradient orbs */}
           <div style={{
             position: 'absolute',
@@ -198,25 +169,9 @@ export default function MaintenancePage() {
               fontSize: '12px',
               color: 'rgba(255,255,255,0.3)',
               marginTop: '40px',
-              marginBottom: '12px',
             }}>
               This page will automatically refresh when we&apos;re back online.
             </p>
-
-            {/* Discreet Admin Login */}
-            <div>
-              <a
-                href="/admin/login"
-                style={{
-                  fontSize: '12px',
-                  color: 'rgba(139,92,246,0.65)',
-                  textDecoration: 'none',
-                  transition: 'color 0.2s',
-                }}
-              >
-                Admin Portal →
-              </a>
-            </div>
           </div>
 
           {/* CSS Animations */}

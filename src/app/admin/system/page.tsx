@@ -37,6 +37,19 @@ interface SystemStatus {
     tables: Record<string, number>;
   };
   storage: {
+    disks?: Array<{
+      filesystem: string;
+      mount: string;
+      name: string;
+      total: string;
+      used: string;
+      free: string;
+      percent: number;
+    }>;
+    totalDisk?: string;
+    usedDisk?: string;
+    freeDisk?: string;
+    diskPercent?: number;
     uploadsSize: string;
     uploadFileCount: number;
     uploadsPath: string;
@@ -305,7 +318,101 @@ export default function SystemStatusPage() {
         </div>
       </div>
 
-      {/* Server Info & Storage Row */}
+      {/* Server Disks & Storage Drives Section (Multi-drive support) */}
+      <div className="bg-[#1a1a2e] rounded-2xl border border-slate-800 p-5 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-amber-500/10">
+              <HardDrive size={20} className="text-amber-400" />
+            </div>
+            <div>
+              <h3 className="font-bold text-white text-base">Server Storage Drives & Partitions</h3>
+              <p className="text-xs text-slate-400">
+                {data.storage.disks?.length || 0} Physical / Mounted storage volume{data.storage.disks?.length === 1 ? '' : 's'} detected
+              </p>
+            </div>
+          </div>
+          {data.storage.totalDisk && (
+            <div className="sm:text-right bg-slate-800/40 px-3.5 py-2 rounded-xl border border-slate-700/50">
+              <p className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">Total Server Capacity</p>
+              <p className="text-base font-black text-amber-400 font-mono">
+                {data.storage.totalDisk}
+                <span className="text-xs font-normal text-slate-400 font-sans ml-2">
+                  ({data.storage.usedDisk} used • {data.storage.freeDisk} free)
+                </span>
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Combined Storage Utilization Bar */}
+        {data.storage.diskPercent !== undefined && (
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-400 font-medium">Overall Storage Pool Utilization</span>
+              <span className="text-white font-bold font-mono">{data.storage.diskPercent}%</span>
+            </div>
+            <ProgressBar
+              percent={data.storage.diskPercent}
+              color={data.storage.diskPercent > 85 ? 'bg-red-500' : data.storage.diskPercent > 70 ? 'bg-amber-500' : 'bg-emerald-500'}
+            />
+          </div>
+        )}
+
+        {/* Individual Storage Drives Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+          {data.storage.disks && data.storage.disks.length > 0 ? (
+            data.storage.disks.map((disk, i) => {
+              const diskColor = disk.percent > 85 ? 'bg-red-500' : disk.percent > 70 ? 'bg-amber-500' : 'bg-emerald-500';
+              return (
+                <div key={i} className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 space-y-3 hover:border-slate-700 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm text-white">{disk.name}</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-600/20 text-violet-300 font-mono font-bold">
+                          {disk.mount}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-mono mt-0.5">{disk.filesystem}</p>
+                    </div>
+                    <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
+                      disk.percent > 85 ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                      disk.percent > 70 ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                      'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                    }`}>
+                      {disk.percent}% used
+                    </span>
+                  </div>
+
+                  <ProgressBar percent={disk.percent} color={diskColor} />
+
+                  <div className="grid grid-cols-3 gap-2 pt-1 text-xs">
+                    <div className="bg-slate-800/40 rounded-lg p-2 text-center">
+                      <p className="text-[10px] text-slate-500">Used</p>
+                      <p className="text-white font-semibold font-mono text-xs mt-0.5">{disk.used}</p>
+                    </div>
+                    <div className="bg-slate-800/40 rounded-lg p-2 text-center">
+                      <p className="text-[10px] text-slate-500">Free</p>
+                      <p className="text-emerald-400 font-semibold font-mono text-xs mt-0.5">{disk.free}</p>
+                    </div>
+                    <div className="bg-slate-800/40 rounded-lg p-2 text-center">
+                      <p className="text-[10px] text-slate-500">Capacity</p>
+                      <p className="text-amber-400 font-semibold font-mono text-xs mt-0.5">{disk.total}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="col-span-2 text-center py-6 text-xs text-slate-500 bg-slate-900/30 rounded-xl border border-slate-800">
+              No individual disk volumes detected
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Server Info & Application Data Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Server Info */}
         <div className="bg-[#1a1a2e] rounded-2xl border border-slate-800 p-5 space-y-3">
@@ -313,7 +420,7 @@ export default function SystemStatusPage() {
             <div className="p-2 rounded-lg bg-cyan-500/10">
               <Server size={18} className="text-cyan-400" />
             </div>
-            <h3 className="font-bold text-white text-sm">Server Info</h3>
+            <h3 className="font-bold text-white text-sm">Server & OS Info</h3>
           </div>
           <div className="space-y-2 text-xs">
             {[
@@ -331,24 +438,25 @@ export default function SystemStatusPage() {
           </div>
         </div>
 
-        {/* Storage & Database */}
+        {/* Database & Application Media */}
         <div className="bg-[#1a1a2e] rounded-2xl border border-slate-800 p-5 space-y-3">
           <div className="flex items-center gap-2.5 mb-2">
-            <div className="p-2 rounded-lg bg-amber-500/10">
-              <HardDrive size={18} className="text-amber-400" />
+            <div className="p-2 rounded-lg bg-violet-500/10">
+              <Database size={18} className="text-violet-400" />
             </div>
-            <h3 className="font-bold text-white text-sm">Storage & Database</h3>
+            <h3 className="font-bold text-white text-sm">App Database & Video Files</h3>
           </div>
           <div className="space-y-2 text-xs">
             {[
               { label: 'Database Status', value: data.database.status === 'online' ? '✅ Online' : '❌ Error' },
-              { label: 'Database Size', value: data.database.size },
-              { label: 'Video Storage', value: data.storage.uploadsSize },
-              { label: 'Upload Files', value: `${data.storage.uploadFileCount} files` },
+              { label: 'Database File Size', value: data.database.size },
+              { label: 'Video Uploads Size', value: data.storage.uploadsSize },
+              { label: 'Stored Video & Image Files', value: `${data.storage.uploadFileCount} files` },
+              { label: 'Uploads Path', value: data.storage.uploadsPath },
             ].map((item, i) => (
               <div key={i} className="flex justify-between items-center py-1.5 border-b border-slate-800/50 last:border-0">
                 <span className="text-slate-500">{item.label}</span>
-                <span className="text-white font-medium">{item.value}</span>
+                <span className="text-white font-medium font-mono truncate max-w-[220px]" title={String(item.value)}>{item.value}</span>
               </div>
             ))}
           </div>

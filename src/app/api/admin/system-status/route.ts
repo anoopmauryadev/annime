@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import os from "os";
 import fs from "fs";
 import path from "path";
+import { execSync } from "child_process";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ function getDirSize(dirPath: string): number {
 }
 
 function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
+  if (!bytes || bytes === 0) return "0 B";
   const k = 1024;
   const sizes = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -43,6 +44,169 @@ function getUptime(seconds: number): string {
   if (days > 0) return `${days}d ${hours}h ${mins}m`;
   if (hours > 0) return `${hours}h ${mins}m`;
   return `${mins}m`;
+}
+
+export interface DiskInfo {
+  filesystem: string;
+  mount: string;
+  name: string;
+  total: string;
+  used: string;
+  free: string;
+  percent: number;
+  totalBytes: number;
+  usedBytes: number;
+  freeBytes: number;
+}
+
+function getDisksInfo(): DiskInfo[] {
+  const disks: DiskInfo[] = [];
+
+  try {
+    // POSIX standard df command in 1K blocks
+    const stdout = execSync("df -P -k", { encoding: "utf-8", timeout: 4000 });
+    const lines = stdout.trim().split("\n").slice(1);
+    const seenMounts = new Set<string>();
+
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 6) continue;
+
+      const fsName = parts[0];
+      const totalK = parseInt(parts[1], 10);
+      const usedK = parseInt(parts[2], 10);
+      const availK = parseInt(parts[3], 10);
+      const percentStr = parts[4].replace("%", "");
+      const percent = parseInt(percentStr, 10) || 0;
+      const mount = parts.slice(5).join(" ");
+
+      if (isNaN(totalK) || totalK <= 0) continue;
+
+      // Filter to keep only physical & mounted storage volumes
+      const isRealDevice =
+        fsName.startsWith("/dev/") ||
+        fsName.startsWith("/dev/mapper/") ||
+        fsName.includes("disk") ||
+        fsName.includes("nvme") ||
+        fsName.includes("sd") ||
+        fsName.includes("vd") ||
+        fsName.includes("xvd");
+
+      if (!isRealDevice) continue;
+
+      // Filter out snap loops, udev, tmpfs, devfs
+      if (
+        fsName.includes("/loop") ||
+        fsName === "devfs" ||
+        fsName === "udev" ||
+        fsName === "tmpfs"
+      ) {
+        continue;
+      }
+
+      // Filter out internal macOS system sub-volumes or transient mount points
+      if (
+        mount.startsWith("/dev") ||
+        mount.startsWith("/sys") ||
+        mount.startsWith("/proc") ||
+        mount.startsWith("/run") ||
+        mount.startsWith("/snap") ||
+        mount.startsWith("/boot/efi") ||
+        mount.includes("/Preboot") ||
+        mount.includes("/VM") ||
+        mount.includes("/Update") ||
+        mount.includes("/xarts") ||
+        mount.includes("/iSCPreboot") ||
+        mount.includes("/Hardware")
+      ) {
+        continue;
+      }
+
+      if (seenMounts.has(mount)) continue;
+      seenMounts.add(mount);
+
+      const totalBytes = totalK * 1024;
+      const usedBytes = usedK * 1024;
+      const freeBytes = availK * 1024;
+
+      // Friendly disk title
+      let displayName = mount === "/" ? "Primary Disk (/)" : `Storage Volume (${mount})`;
+      if (mount.includes("Volumes/Data")) displayName = "Data Volume";
+
+      disks.push({
+        filesystem: fsName,
+        mount,
+        name: displayName,
+        total: formatBytes(totalBytes),
+        used: formatBytes(usedBytes),
+        free: formatBytes(freeBytes),
+        percent,
+        totalBytes,
+        usedBytes,
+        freeBytes,
+      });
+    }
+  } catch {
+    // df failed or restricted environment
+  }
+
+  // Fallback: use fs.statfsSync if available
+  if (disks.length === 0) {
+    try {
+      if (typeof (fs as any).statfsSync === "function") {
+        const stats = (fs as any).statfsSync("/");
+        const totalBytes = stats.blocks * stats.bsize;
+        const freeBytes = stats.bavail * stats.bsize;
+        const usedBytes = totalBytes - freeBytes;
+        const percent = Math.round((usedBytes / totalBytes) * 100);
+        disks.push({
+          filesystem: "/dev/root",
+          mount: "/",
+          name: "Primary Storage (/)",
+          total: formatBytes(totalBytes),
+          used: formatBytes(usedBytes),
+          free: formatBytes(freeBytes),
+          percent,
+          totalBytes,
+          usedBytes,
+          freeBytes,
+        });
+      }
+    } catch {}
+  }
+
+  // Check additional mount points that commonly host second disks on VPS (e.g. /mnt, /data, /home, /var, /opt, /storage)
+  const additionalPaths = ["/data", "/mnt", "/home", "/var", "/opt", "/storage", process.cwd()];
+  for (const p of additionalPaths) {
+    try {
+      if (fs.existsSync(p) && typeof (fs as any).statfsSync === "function") {
+        const stats = (fs as any).statfsSync(p);
+        const totalBytes = stats.blocks * stats.bsize;
+        if (totalBytes > 1024 * 1024 * 1024) { // > 1 GB
+          const alreadyExists = disks.some(d => Math.abs(d.totalBytes - totalBytes) < 500 * 1024 * 1024);
+          if (!alreadyExists) {
+            const freeBytes = stats.bavail * stats.bsize;
+            const usedBytes = totalBytes - freeBytes;
+            const percent = Math.round((usedBytes / totalBytes) * 100);
+            disks.push({
+              filesystem: `Drive (${path.basename(p) || p})`,
+              mount: p,
+              name: `Attached Storage (${p})`,
+              total: formatBytes(totalBytes),
+              used: formatBytes(usedBytes),
+              free: formatBytes(freeBytes),
+              percent,
+              totalBytes,
+              usedBytes,
+              freeBytes,
+            });
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return disks;
 }
 
 export async function GET(request: Request) {
@@ -77,11 +241,9 @@ export async function GET(request: Request) {
     let dbPath = "";
     try {
       const db = getDb();
-      // Quick health check query
       db.prepare("SELECT 1").get();
       dbStatus = "online";
 
-      // Find DB file size
       const possiblePaths = [
         path.join(process.cwd(), "data", "anime.db"),
         path.join(process.cwd(), "anime.db"),
@@ -97,7 +259,13 @@ export async function GET(request: Request) {
       dbStatus = "error";
     }
 
-    // ─── Storage / Uploads ───────────────────────────
+    // ─── Physical Storage Drives & Uploads ───────────
+    const disks = getDisksInfo();
+    const totalDiskBytes = disks.reduce((acc, d) => acc + d.totalBytes, 0);
+    const usedDiskBytes = disks.reduce((acc, d) => acc + d.usedBytes, 0);
+    const freeDiskBytes = disks.reduce((acc, d) => acc + d.freeBytes, 0);
+    const diskPercent = totalDiskBytes > 0 ? Math.round((usedDiskBytes / totalDiskBytes) * 100) : 0;
+
     const uploadsDir = path.join(process.cwd(), "public", "uploads");
     const uploadsSize = getDirSize(uploadsDir);
     let uploadFileCount = 0;
@@ -136,7 +304,7 @@ export async function GET(request: Request) {
           const row = db.prepare(`SELECT COUNT(*) as count FROM ${table}`).get() as { count: number };
           tableCounts[table] = row.count;
         } catch {
-          tableCounts[table] = -1; // table doesn't exist
+          tableCounts[table] = -1;
         }
       }
     } catch {}
@@ -178,6 +346,11 @@ export async function GET(request: Request) {
       },
 
       storage: {
+        disks,
+        totalDisk: formatBytes(totalDiskBytes),
+        usedDisk: formatBytes(usedDiskBytes),
+        freeDisk: formatBytes(freeDiskBytes),
+        diskPercent,
         uploadsSize: formatBytes(uploadsSize),
         uploadFileCount,
         uploadsPath: uploadsDir,
@@ -202,7 +375,12 @@ export async function GET(request: Request) {
           detail: `Size: ${dbSize} | ${Object.keys(tableCounts).length} tables`,
         },
         {
-          name: "Video Storage",
+          name: "Storage Drives",
+          status: disks.length > 0 ? "online" : "error",
+          detail: `${formatBytes(usedDiskBytes)} used of ${formatBytes(totalDiskBytes)} (${disks.length} volume${disks.length !== 1 ? 's' : ''})`,
+        },
+        {
+          name: "Video Uploads",
           status: uploadsSize > 0 ? "online" : "empty",
           detail: `${formatBytes(uploadsSize)} | ${uploadFileCount} files`,
         },
