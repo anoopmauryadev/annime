@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromRequest } from "@/lib/auth";
 import { redeemVipCode } from "@/lib/db";
+import { rateLimit } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -14,10 +15,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const limited = rateLimit(request, "vip-redeem", 10, 15 * 60 * 1000, String(user.id));
+    if (limited) return limited;
     const body = await request.json();
-    const code = (body.code || "").trim();
+    const code = typeof body.code === "string" ? body.code.trim() : "";
 
-    if (!code) {
+    if (!code || code.length > 64) {
       return NextResponse.json(
         { error: "Please enter a valid VIP code." },
         { status: 400 }

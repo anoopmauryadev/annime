@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromRequest } from "@/lib/auth";
 import { redeemAccessKey } from "@/lib/db";
+import { rateLimit } from "@/lib/rateLimit";
 
 // POST /api/keys/redeem - Manually redeem an access key code (e.g. AZ-XXXX-XXXX)
 export async function POST(request: NextRequest) {
@@ -13,10 +14,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const limited = rateLimit(request, "key-redeem", 10, 15 * 60 * 1000, String(user.id));
+    if (limited) return limited;
     const body = await request.json().catch(() => ({}));
-    const keyCode = (body.key_code || "").trim();
+    const keyCode = typeof body.key_code === "string" ? body.key_code.trim() : "";
 
-    if (!keyCode) {
+    if (!keyCode || keyCode.length > 64) {
       return NextResponse.json(
         { error: "Please provide a valid access key code." },
         { status: 400 }

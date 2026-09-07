@@ -33,6 +33,19 @@ const cookie = (request: Request, name: string) => {
   if (!match) return ""; try { return decodeURIComponent(match[1]); } catch { return ""; }
 };
 
+export function isSameOriginMutation(request: Request): boolean {
+  if (["GET", "HEAD", "OPTIONS"].includes(request.method)) return true;
+  const site = request.headers.get("sec-fetch-site");
+  if (site === "cross-site" || site === "same-site") return false;
+  const origin = request.headers.get("origin");
+  if (!origin) return true; // Non-browser API clients still require their signed token.
+  try {
+    const source = new URL(origin);
+    const host = request.headers.get("host") || new URL(request.url).host;
+    return ["http:", "https:"].includes(source.protocol) && source.host === host;
+  } catch { return false; }
+}
+
 export function generateUserToken(user: { id: number; username: string; email: string; is_vip?: number }) {
   return sign({ type: "user", version: 2, id: user.id, username: user.username, email: user.email,
     is_vip: user.is_vip || 0, exp: Date.now() + 30 * 86400000 }, "user");
@@ -43,6 +56,7 @@ export function verifyUserToken(token: string | null | undefined): UserPayload |
     typeof p.email === "string" && typeof p.exp === "number" && p.exp > Date.now() ? p as unknown as UserPayload : null;
 }
 export function getUserFromRequest(request: Request) {
+  if (!isSameOriginMutation(request)) return null;
   const auth = request.headers.get("authorization");
   const header = auth?.startsWith("Bearer ") ? auth.slice(7) : request.headers.get("x-user-token");
   return verifyUserToken(header) || verifyUserToken(cookie(request, "user_token"));
@@ -57,6 +71,7 @@ export function verifyAdminToken(token: string | null | undefined): AdminPayload
     typeof p.username === "string" && typeof p.exp === "number" && p.exp > Date.now() ? p as unknown as AdminPayload : null;
 }
 export function requireAdminAuth(request: Request): { authorized: boolean; error?: string; admin?: AdminPayload } {
+  if (!isSameOriginMutation(request)) return { authorized: false, error: "Cross-origin requests are not allowed" };
   const auth = request.headers.get("authorization");
   const header = auth?.startsWith("Bearer ") ? auth.slice(7) : request.headers.get("x-admin-token");
   const admin = verifyAdminToken(header) || verifyAdminToken(cookie(request, "admin_token"));

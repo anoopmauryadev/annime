@@ -17,7 +17,8 @@ export async function GET(request: Request, context: { params: Promise<{ path: s
   const user = getUserFromRequest(request);
   if (!user) return Response.json({ error: "Login required" }, { status: 401 });
   const parts = (await context.params).path;
-  if (!Array.isArray(parts) || !parts.length || parts.some((part) => !part || part === "." || part === "..")) {
+  if (!Array.isArray(parts) || parts.length < 2 || !["videos", "hls", "downloads"].includes(parts[0]) ||
+      parts.some((part) => !part || part === "." || part === ".." || /[/\\\0]/.test(part))) {
     return Response.json({ error: "Invalid media path" }, { status: 400 });
   }
   const membership = isUserKeyActive(user.id);

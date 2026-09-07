@@ -170,7 +170,7 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId }: VideoPlayerProps) {
       });
       const data = await res.json();
       if (res.ok && data.redirect_url) {
-        window.open(data.redirect_url, "_blank");
+        window.open(data.redirect_url, "_blank", "noopener,noreferrer");
         setPlaybackToast("⚡ Complete shortener task in the opened tab to activate your 48h key!");
         setTimeout(() => setPlaybackToast(null), 6000);
       } else if (data.status === "already_active") {

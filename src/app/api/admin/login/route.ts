@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { verifyAdmin } from '@/lib/db';
-import { generateAdminToken, adminCookieOptions } from '@/lib/auth';
+import { generateAdminToken, adminCookieOptions, isSameOriginMutation } from '@/lib/auth';
 import { requestIdentity } from '@/lib/rateLimit';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +28,7 @@ function getClientIp(req: Request): string {
 }
 
 export async function POST(req: Request) {
+  if (!isSameOriginMutation(req)) return NextResponse.json({ error: "Cross-origin requests are not allowed" }, { status: 403 });
   const ip = getClientIp(req);
   const now = Date.now();
 
@@ -55,7 +56,8 @@ export async function POST(req: Request) {
     const accountAttempt = loginAttempts.get(accountKey);
     if (accountAttempt && now < accountAttempt.lockedUntil) return NextResponse.json({ error: "Too many login attempts. Try again later." }, { status: 429 });
 
-    if (!username || !password) {
+    if (typeof username !== "string" || typeof password !== "string" || !username || !password ||
+        username.length > 254 || password.length > 1024) {
       return NextResponse.json({ error: 'Username and password are required' }, { status: 400 });
     }
 

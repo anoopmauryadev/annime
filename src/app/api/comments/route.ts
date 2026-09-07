@@ -1,6 +1,7 @@
 import { addComment, getCommentsByEpisode, deleteComment } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 import { NextResponse } from "next/server";
+import { rateLimit } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -24,11 +25,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Login required to comment" }, { status: 401 });
   }
 
+  const limited = rateLimit(request, "comments", 10, 60 * 1000, String(user.id));
+  if (limited) return limited;
   try {
     const body = await request.json();
     const { episode_id, comment } = body;
 
-    if (!episode_id || !comment?.trim()) {
+    if (!episode_id || typeof comment !== "string" || !comment.trim()) {
       return NextResponse.json({ error: "episode_id and comment are required" }, { status: 400 });
     }
 
@@ -69,4 +72,3 @@ export async function DELETE(request: Request) {
 
   return NextResponse.json({ success: true });
 }
-

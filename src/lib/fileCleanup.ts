@@ -10,7 +10,7 @@ export function deleteLocalFileOrDir(urlOrPath?: string | null): boolean {
   if (!urlOrPath || typeof urlOrPath !== "string") return false;
 
   // Only delete files under /uploads/
-  if (!urlOrPath.includes("/uploads/")) return false;
+  if (!urlOrPath.startsWith("/uploads/")) return false;
 
   try {
     const cleanUrl = urlOrPath.split("?")[0].split("#")[0].trim();
@@ -29,7 +29,8 @@ export function deleteLocalFileOrDir(urlOrPath?: string | null): boolean {
         if (folderName && folderName !== ".." && folderName !== ".") {
           const hlsDir = path.join(process.cwd(), "public", "uploads", "hls", folderName);
           const allowedRoot = path.join(process.cwd(), "public", "uploads", "hls");
-          if (hlsDir.startsWith(allowedRoot) && fs.existsSync(hlsDir)) {
+          if (hlsDir.startsWith(allowedRoot + path.sep) && fs.existsSync(hlsDir) &&
+              fs.realpathSync(hlsDir).startsWith(fs.realpathSync(allowedRoot) + path.sep)) {
             console.log(`[FileCleanup] Deleting HLS directory: ${hlsDir}`);
             fs.rmSync(hlsDir, { recursive: true, force: true });
             return true;
@@ -43,16 +44,16 @@ export function deleteLocalFileOrDir(urlOrPath?: string | null): boolean {
     const uploadsRoot = path.join(process.cwd(), "public", "uploads");
 
     // Security check: ensure path is strictly inside public/uploads
-    if (!fullPath.startsWith(uploadsRoot)) {
+    if (!fullPath.startsWith(uploadsRoot + path.sep)) {
       console.warn(`[FileCleanup] Refused to delete path outside public/uploads: ${fullPath}`);
       return false;
     }
 
     if (fs.existsSync(fullPath)) {
+      if (!fs.realpathSync(fullPath).startsWith(fs.realpathSync(uploadsRoot) + path.sep)) return false;
       const stat = fs.statSync(fullPath);
       if (stat.isDirectory()) {
-        console.log(`[FileCleanup] Deleting directory: ${fullPath}`);
-        fs.rmSync(fullPath, { recursive: true, force: true });
+        return false; // Only individual media files or the HLS folder above may be removed.
       } else {
         console.log(`[FileCleanup] Deleting file: ${fullPath}`);
         fs.unlinkSync(fullPath);

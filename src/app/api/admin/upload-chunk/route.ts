@@ -1,7 +1,7 @@
 import { requireAdminAuth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import fs from "fs/promises";
-import { existsSync, createWriteStream } from "fs";
+import { existsSync } from "fs";
 import path from "path";
 import crypto from "crypto";
 import { validateSavedMedia } from "@/lib/upload";
@@ -31,7 +31,9 @@ export async function POST(request: Request) {
     if (!chunk || !uploadId) {
       return NextResponse.json({ error: "Missing chunk or uploadId" }, { status: 400 });
     }
-    if (!Number.isInteger(chunkIndex) || !Number.isInteger(totalChunks) || chunkIndex < 0 || totalChunks < 1 || totalChunks > 2560 || chunk.size > 5 * 1024 * 1024) {
+    if (!(chunk instanceof File) || !/^[a-zA-Z0-9_-]{1,128}$/.test(uploadId) ||
+        !Number.isInteger(chunkIndex) || !Number.isInteger(totalChunks) || chunkIndex < 0 || chunkIndex >= totalChunks ||
+        totalChunks < 1 || totalChunks > 2560 || chunk.size === 0 || chunk.size > 5 * 1024 * 1024) {
       return NextResponse.json({ error: "Invalid upload chunk" }, { status: 400 });
     }
 
@@ -46,13 +48,16 @@ export async function POST(request: Request) {
     }
 
     // Temporary upload directory for chunks
-    const tempDir = path.join(process.cwd(), "public", "uploads", "temp");
+    const tempDir = path.join(process.cwd(), "data", "upload-temp", String(auth.admin!.id));
     if (!existsSync(tempDir)) {
       await fs.mkdir(tempDir, { recursive: true });
     }
 
-    const cleanUploadId = uploadId.replace(/[^a-zA-Z0-9_-]/g, "");
-    const tempFilePath = path.join(tempDir, `${cleanUploadId}.tmp`);
+    const tempFilePath = path.join(tempDir, `${uploadId}.tmp`);
+    const currentSize = await fs.stat(tempFilePath).then((stat) => stat.size).catch(() => 0);
+    if (currentSize + chunk.size > 10 * 1024 ** 3) {
+      return NextResponse.json({ error: "Video exceeds the 10 GB upload limit." }, { status: 413 });
+    }
 
     // Append chunk buffer to temp file
     const chunkBytes = await chunk.arrayBuffer();

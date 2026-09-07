@@ -50,12 +50,19 @@ function isMaintenanceActive(): boolean {
 }
 
 export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  // Match the decoded, normalized path that the static file server will resolve.
+  let pathname: string;
+  try { pathname = path.posix.normalize(decodeURIComponent(request.nextUrl.pathname)); }
+  catch { return new NextResponse(null, { status: 400 }); }
+  if (/[\\\0]/.test(pathname)) return new NextResponse(null, { status: 400 });
+  if (pathname === '/uploads/temp' || pathname.startsWith('/uploads/temp/')) {
+    return new NextResponse(null, { status: 404 });
+  }
 
   const protectedMedia = pathname.match(/^\/uploads\/(videos|hls|downloads)\/(.+)$/);
   if (protectedMedia) {
     const target = request.nextUrl.clone();
-    target.pathname = `/api/media/${protectedMedia[1]}/${protectedMedia[2]}`;
+    target.pathname = `/api/media/${protectedMedia[1]}/${protectedMedia[2].split('/').map(encodeURIComponent).join('/')}`;
     return NextResponse.rewrite(target);
   }
 
@@ -103,7 +110,7 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Apply proxy only to page routes; exclude API routes and static assets
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    // API handlers authorize themselves; skipping them also avoids buffering uploads twice.
+    '/((?!api/|api$|_next/static|_next/image|favicon.ico).*)',
   ],
 };

@@ -14,7 +14,8 @@ const run = promisify(execFile);
 export async function validateSavedMedia(filePath: string, isVideo: boolean): Promise<void> {
   if (isVideo) {
     try {
-      await run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_type", "-of", "csv=p=0", filePath], { timeout: 30000 });
+      const { stdout } = await run("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-format_whitelist", "mov,matroska,webm,avi", "-select_streams", "v:0", "-show_entries", "stream=codec_type", "-of", "csv=p=0", filePath], { timeout: 30000 });
+      if (stdout.trim() !== "video") throw new Error("Missing video stream");
       return;
     } catch { throw new Error("Uploaded file is not a valid video"); }
   }

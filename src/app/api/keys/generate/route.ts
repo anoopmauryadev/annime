@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 5. Construct destination verify URL
-    let origin = (settings.site_public_url || "").trim();
+    let origin = (settings.site_public_url || process.env.NEXT_PUBLIC_SITE_URL || "").trim();
     if (!origin) {
       origin =
         request.nextUrl.origin ||
@@ -113,10 +113,11 @@ export async function POST(request: NextRequest) {
         if (res.ok) {
           const data = await res.json();
           // Standard shortener responses (GPLinks, ShrinkMe, Droplink): { status: "success", shortenedUrl: "..." }
-          if (data.shortenedUrl) {
+          const redirect = typeof data.shortenedUrl === "string" ? new URL(data.shortenedUrl) : null;
+          if (redirect && (redirect.protocol === "https:" || (process.env.NODE_ENV !== "production" && redirect.protocol === "http:"))) {
             return NextResponse.json({
               success: true,
-              redirect_url: data.shortenedUrl,
+              redirect_url: redirect.href,
               provider: settings.shortener_provider || "gplinks",
             });
           }

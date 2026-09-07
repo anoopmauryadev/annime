@@ -1,18 +1,20 @@
 import { createUser, getUserByEmail, getUserByUsername } from "@/lib/db";
-import { generateUserToken, userCookieOptions } from "@/lib/auth";
+import { generateUserToken, userCookieOptions, isSameOriginMutation } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { rateLimit } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  if (!isSameOriginMutation(request)) return Response.json({ error: "Cross-origin requests are not allowed" }, { status: 403 });
   const limited = rateLimit(request, "register", 5, 60 * 60 * 1000);
   if (limited) return limited;
   try {
     const body = await request.json();
     const { username, email, password } = body;
 
-    if (!username || !email || !password) {
+    if (typeof username !== "string" || typeof email !== "string" || typeof password !== "string" ||
+        !username || !email || !password || username.length > 64 || email.length > 254 || password.length > 1024) {
       return Response.json(
         { error: "Username, email and password are required" },
         { status: 400 }

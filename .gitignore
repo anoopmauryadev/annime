@@ -47,6 +47,9 @@ data/*.db-shm
 data/*.db-wal
 data/admin-bootstrap.txt
 data/security-backup-*.db
+data/security-backup-*.db.partial
+data/upload-temp/
+public/uploads/temp/
 
 # uploaded videos & HLS (too large for git)
 public/uploads/videos/

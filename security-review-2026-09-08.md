@@ -1,5 +1,7 @@
 Security review — Anime Zone — 8 September 2026
 
+Follow-up: a second local pass found encoded-path and temporary-upload bypasses after the initial remediation. Their fixes, current test evidence and remaining scope limits are recorded in [security-retest-2026-09-08.md](/Users/anoopmaurya/Desktop/annime/security-retest-2026-09-08.md). The descriptions below are the historical initial review, not the current vulnerable behavior.
+
 Remediation status: all findings below were addressed in the local workspace on 8 September 2026. The original descriptions are retained as the audit record. Automated security tests, VIP intro-download tests, browser download regression and the production build pass. The updated VPS installer must be deployed before these protections apply to the live site.
 
 Scope: current local application, authentication and access controls, uploads/media, dependency lockfile and VPS setup script. Production code and the real database were not changed. The local web server remained stopped. The VPS configuration, logs and deployed database were not inspected; this review does not establish whether anyone has exploited these issues.

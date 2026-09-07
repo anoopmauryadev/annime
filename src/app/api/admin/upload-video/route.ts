@@ -1,9 +1,10 @@
-import { saveUploadedFile } from "@/lib/upload";
+import { saveUploadedFile, validateSavedMedia } from "@/lib/upload";
 import { createServer, createDownload } from "@/lib/db";
 import { requireAdminAuth } from "@/lib/auth";
 import { startHlsTranscoding } from "@/lib/transcoder";
 import { NextResponse } from "next/server";
 import path from "path";
+import fs from "fs/promises";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 1800; // 30 minutes for slow mobile uploads
@@ -31,7 +32,15 @@ export async function POST(request: Request) {
       videoUrl = await saveUploadedFile(videoFile, "videos");
     }
 
-    const absoluteVideoPath = path.join(process.cwd(), "public", videoUrl);
+    if (!videoUrl.startsWith("/uploads/videos/") || !/\.(mp4|webm|mkv|mov|avi)$/i.test(videoUrl)) {
+      return NextResponse.json({ error: "Select a locally uploaded video" }, { status: 400 });
+    }
+    const root = await fs.realpath(path.join(process.cwd(), "public", "uploads", "videos"));
+    const absoluteVideoPath = await fs.realpath(path.join(process.cwd(), "public", videoUrl));
+    if (!absoluteVideoPath.startsWith(root + path.sep) || !(await fs.stat(absoluteVideoPath)).isFile()) {
+      return NextResponse.json({ error: "Invalid uploaded video path" }, { status: 400 });
+    }
+    if (uploadedVideoUrl) await validateSavedMedia(absoluteVideoPath, true);
 
     let serverId = null;
     if (episodeId) {

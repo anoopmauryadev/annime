@@ -85,24 +85,38 @@ fi
 echo "🔨 [5/7] Installing dependencies & building application..."
 cd "$APP_DIR"
 chown -R annime:annime "$APP_DIR"
+chmod 600 "$APP_DIR/.env.local"
 runuser -u annime -- npm ci
 runuser -u annime -- node scripts/apply_security_migration.mjs
 runuser -u annime -- npm run build
 
 echo "⚡ [6/7] Configuring PM2 process manager..."
-pm2 delete annime 2>/dev/null || true
+if pm2 delete annime 2>/dev/null; then
+  pm2 save --force
+fi
 runuser -u annime -- pm2 delete annime 2>/dev/null || true
-runuser -u annime -- pm2 start npm --name "annime" -- start
+runuser -u annime -- pm2 start npm --name "annime" -- start -- --hostname 127.0.0.1
 env PATH="$PATH" pm2 startup systemd -u annime --hp /home/annime 2>/dev/null || true
 runuser -u annime -- pm2 save
 
 echo "🌐 [7/7] Configuring Nginx Reverse Proxy..."
+mkdir -p /etc/nginx/snippets
+cat > /etc/nginx/snippets/annime-upload.conf << 'NGINX_UPLOAD'
+proxy_pass http://127.0.0.1:3000;
+proxy_http_version 1.1;
+proxy_set_header Host $host;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_request_buffering off;
+proxy_buffering off;
+NGINX_UPLOAD
 cat > /etc/nginx/sites-available/annime << NGINX
 server {
     listen 80;
     server_name $DOMAIN www.$DOMAIN;
 
-    client_max_body_size 10G;
+    client_max_body_size 64k;
     client_body_buffer_size 1M;
     client_body_timeout 1800s;
     client_header_timeout 1800s;
@@ -110,6 +124,28 @@ server {
     proxy_send_timeout 1800s;
     proxy_read_timeout 1800s;
     send_timeout 1800s;
+
+    location = /api/upload {
+        client_max_body_size 24m;
+        include /etc/nginx/snippets/annime-upload.conf;
+    }
+    location = /api/admin/upload-chunk {
+        client_max_body_size 6m;
+        include /etc/nginx/snippets/annime-upload.conf;
+    }
+    location = /api/admin/brand-intro {
+        client_max_body_size 260m;
+        include /etc/nginx/snippets/annime-upload.conf;
+    }
+    location = /api/admin/upload-video {
+        client_max_body_size 10G;
+        include /etc/nginx/snippets/annime-upload.conf;
+    }
+
+    # Old partial uploads must never be served as public files.
+    location ~ ^/uploads/temp(/|$) {
+        return 404;
+    }
 
     # Protected videos and HLS must pass through application authorization.
     location ~ ^/uploads/(videos|hls|downloads)/ {
@@ -160,7 +196,7 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
 
-        client_max_body_size 10G;
+        client_max_body_size 64k;
         proxy_request_buffering off;
         proxy_buffering off;
         proxy_read_timeout 1800s;

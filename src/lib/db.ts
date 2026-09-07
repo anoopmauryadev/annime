@@ -1488,8 +1488,8 @@ export function generateFormattedKeyCode(): string {
   let part1 = "";
   let part2 = "";
   for (let i = 0; i < 4; i++) {
-    part1 += chars.charAt(Math.floor(Math.random() * chars.length));
-    part2 += chars.charAt(Math.floor(Math.random() * chars.length));
+    part1 += chars.charAt(crypto.randomInt(chars.length));
+    part2 += chars.charAt(crypto.randomInt(chars.length));
   }
   return `AZ-${part1}-${part2}`;
 }
@@ -1593,6 +1593,9 @@ export function redeemAccessKey(
   if (!key) {
     return { success: false, error: "Invalid Key Code. Please check and try again." };
   }
+  if (key.user_id && key.user_id !== userId) {
+    return { success: false, error: "This access key belongs to another account." };
+  }
 
   if (key.status === "revoked") {
     return { success: false, error: "This key has been revoked by admin." };
@@ -1648,6 +1651,9 @@ export function claimAndActivateKey(
 
   if (!key) {
     return { success: false, error: "Invalid or expired verification claim link." };
+  }
+  if ((key.user_id && key.user_id !== userId) || (key.used_by_user_id && key.used_by_user_id !== userId)) {
+    return { success: false, error: "This verification link belongs to another account." };
   }
 
   if (key.status === "revoked") {
@@ -1803,19 +1809,31 @@ export function getAllAccessKeys(opts: {
 
 export function revokeAccessKey(id: number): boolean {
   const db = getDb();
-  const key = db.prepare("SELECT used_by_user_id FROM access_keys WHERE id = ?").get(id) as { used_by_user_id: number | null } | undefined;
-  if (!key) return false;
-  const res = db.transaction(() => {
-    const changed = db.prepare("UPDATE access_keys SET status = 'revoked' WHERE id = ?").run(id);
+  return db.transaction(() => {
+    const key = db.prepare(
+      `SELECT used_by_user_id, status, expires_at,
+              MAX(0, MIN(duration_hours * 3600, unixepoch(expires_at) - unixepoch('now'))) AS unused_seconds
+       FROM access_keys WHERE id = ?`
+    ).get(id) as { used_by_user_id: number | null; status: string; expires_at: string | null; unused_seconds: number | null } | undefined;
+    if (!key) return false;
+    if (key.status === "revoked") return true;
+    db.prepare("UPDATE access_keys SET status = 'revoked' WHERE id = ?").run(id);
     if (key.used_by_user_id) {
+      // Later stacked keys include this key's interval. Remove only its unused
+      // time; preserve hours already consumed and the other keys' own durations.
+      if (key.unused_seconds && key.expires_at) {
+        db.prepare(
+          `UPDATE access_keys SET expires_at = datetime(expires_at, '-' || ? || ' seconds')
+           WHERE used_by_user_id = ? AND status = 'used' AND expires_at > ?`
+        ).run(key.unused_seconds, key.used_by_user_id, key.expires_at);
+      }
       const remaining = db.prepare(
         "SELECT MAX(expires_at) AS expires_at FROM access_keys WHERE used_by_user_id = ? AND status = 'used' AND expires_at > datetime('now')"
       ).get(key.used_by_user_id) as { expires_at: string | null };
       db.prepare("UPDATE users SET key_expires_at = ? WHERE id = ?").run(remaining.expires_at, key.used_by_user_id);
     }
-    return changed;
+    return true;
   })();
-  return res.changes > 0;
 }
 
 export function deleteAccessKey(id: number): boolean {
