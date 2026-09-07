@@ -6,7 +6,8 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "transcode": "node scripts/transcode-pending.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

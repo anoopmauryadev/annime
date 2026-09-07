@@ -71,12 +71,38 @@ export async function POST(req: Request) {
 
       if (videoFile && videoFile.size > 0) {
         const videoUrl = await saveUploadedFile(videoFile, 'videos');
-        createServer({
+        const path = await import('path');
+        const absoluteVideoPath = path.join(process.cwd(), 'public', videoUrl);
+        const serverId = createServer({
           episode_id: epId,
-          server_name: (formData.get('server_name') as string) || 'Server 1 (Uploaded Video)',
+          server_name: (formData.get('server_name') as string) || 'Multi-Quality HD (2K / 1080p / 720p / 360p)',
           server_type: 'direct',
           stream_url: videoUrl,
           server_order: 0,
+        });
+
+        // Register video download
+        try {
+          const { createDownload } = await import('@/lib/db');
+          const ext = path.extname(videoFile.name || '').replace('.', '').toUpperCase() || 'MP4';
+          const fileSizeMB = (videoFile.size / (1024 * 1024)).toFixed(1);
+          createDownload({
+            episode_id: epId,
+            quality: `1080p Full HD (${ext})`,
+            download_url: videoUrl,
+            file_size: `${fileSizeMB} MB`,
+          });
+        } catch {}
+
+        // Background multi-quality HLS transcoding
+        const { startHlsTranscoding } = await import('@/lib/transcoder');
+        const outputDirName = `ep_${epId}_${Date.now()}`;
+        startHlsTranscoding({
+          inputPath: absoluteVideoPath,
+          outputDirName,
+          serverId,
+        }).catch((err) => {
+          console.error('[Anime] Error during background HLS transcoding:', err);
         });
       } else if (streamUrl && streamUrl.trim()) {
         createServer({

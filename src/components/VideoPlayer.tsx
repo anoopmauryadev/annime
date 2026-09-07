@@ -391,8 +391,10 @@ export default function VideoPlayer({ servers, animeId, episodeId }: VideoPlayer
       };
     } else if (isHls && video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = embedSrc;
+      video.load();
     } else {
       video.src = embedSrc;
+      video.load();
     }
   }, [embedSrc, isEmbed, isHls, user, keyAccess.active, keyAccess.is_vip]);
 
@@ -595,6 +597,7 @@ export default function VideoPlayer({ servers, animeId, episodeId }: VideoPlayer
               controls
               autoPlay
               playsInline
+              preload="metadata"
               className="absolute inset-0 w-full h-full outline-none"
               controlsList="nodownload"
               onTimeUpdate={(e) => {
@@ -607,7 +610,9 @@ export default function VideoPlayer({ servers, animeId, episodeId }: VideoPlayer
               onPause={(e) => {
                 saveProgress(e.currentTarget.currentTime, e.currentTarget.duration);
               }}
-            ></video>
+            >
+              {!isHls && embedSrc && <source src={embedSrc} type="video/mp4" />}
+            </video>
 
             {/* Resume Playback Prompt Banner (Overlay inside player) */}
             {showResumeBanner && savedProgress && (
