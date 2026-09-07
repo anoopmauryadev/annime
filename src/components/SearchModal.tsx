@@ -32,7 +32,7 @@ export default function SearchModal() {
         const res = await fetch(`/api/anime?search=${encodeURIComponent(query)}&limit=8`);
         if (res.ok) {
           const data = await res.json();
-          setResults(data.data || []);
+          setResults(Array.isArray(data) ? data : (data.data || []));
         }
       } catch (err) {}
       setLoading(false);
