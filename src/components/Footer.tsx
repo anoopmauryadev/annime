@@ -75,9 +75,6 @@ export default function Footer() {
         {/* Bottom Disclaimer & Copyright */}
         <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left text-xs text-gray-500">
           <p>© 2026 Anime Zone. Non-commercial anime streaming.</p>
-          <div className="flex items-center gap-4 text-xs">
-            <span>Powered by Next.js</span>
-          </div>
         </div>
       </div>
     </footer>
