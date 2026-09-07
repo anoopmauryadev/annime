@@ -125,7 +125,7 @@ export function verifyAdminToken(token: string | null | undefined): AdminPayload
 }
 
 // Request helper to authenticate admin requests
-export function requireAdminAuth(request: Request): { authorized: boolean; error?: string } {
+export function requireAdminAuth(request: Request): { authorized: boolean; error?: string; admin?: AdminPayload } {
   // 1. Check Authorization header
   const authHeader = request.headers.get("authorization");
   let token = "";
@@ -143,5 +143,6 @@ export function requireAdminAuth(request: Request): { authorized: boolean; error
     return { authorized: false, error: "Unauthorized: Invalid or expired admin token" };
   }
 
-  return { authorized: true };
+  return { authorized: true, admin: payload };
 }
+

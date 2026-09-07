@@ -1,19 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { verifyAdminToken } from "@/lib/auth";
+import { requireAdminAuth } from "@/lib/auth";
 import bcrypt from "bcryptjs";
 
 // POST /api/admin/change-password
 export async function POST(req: NextRequest) {
-  // Verify admin auth
-  const authHeader = req.headers.get("authorization");
-  let token = "";
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    token = authHeader.substring(7);
-  }
-  const admin = verifyAdminToken(token);
-  if (!admin) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = requireAdminAuth(req);
+  if (!auth.authorized || !auth.admin) {
+    return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: 401 });
   }
 
   try {
@@ -36,7 +30,7 @@ export async function POST(req: NextRequest) {
     const db = getDb();
     const user = db
       .prepare("SELECT * FROM admin_users WHERE username = ?")
-      .get(admin.username) as { id: number; password_hash: string } | undefined;
+      .get(auth.admin.username) as { id: number; password_hash: string } | undefined;
 
     if (!user) {
       return NextResponse.json({ error: "Admin user not found" }, { status: 404 });
@@ -55,3 +49,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
