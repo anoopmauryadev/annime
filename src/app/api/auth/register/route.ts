@@ -1,9 +1,13 @@
 import { createUser, getUserByEmail, getUserByUsername } from "@/lib/db";
-import { generateUserToken } from "@/lib/auth";
+import { generateUserToken, userCookieOptions } from "@/lib/auth";
+import { NextResponse } from "next/server";
+import { rateLimit } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const limited = rateLimit(request, "register", 5, 60 * 60 * 1000);
+  if (limited) return limited;
   try {
     const body = await request.json();
     const { username, email, password } = body;
@@ -22,9 +26,9 @@ export async function POST(request: Request) {
       );
     }
 
-    if (password.length < 6) {
+    if (password.length < 10) {
       return Response.json(
-        { error: "Password must be at least 6 characters long" },
+        { error: "Password must be at least 10 characters long" },
         { status: 400 }
       );
     }
@@ -48,7 +52,7 @@ export async function POST(request: Request) {
     const user = createUser({ username, email, password });
     const token = generateUserToken(user);
 
-    const response = Response.json({
+    const response = NextResponse.json({
       success: true,
       user: {
         id: user.id,
@@ -56,13 +60,9 @@ export async function POST(request: Request) {
         email: user.email,
         is_vip: 0,
       },
-      token,
     });
 
-    response.headers.set(
-      "Set-Cookie",
-      `user_token=${encodeURIComponent(token)}; Path=/; Max-Age=2592000; SameSite=Lax`
-    );
+    response.cookies.set("user_token", token, userCookieOptions);
 
     return response;
   } catch (err: any) {

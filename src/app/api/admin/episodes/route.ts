@@ -7,6 +7,8 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 1800; // 30 minutes for slow mobile uploads
 
 export async function GET(request: Request) {
+  const auth = requireAdminAuth(request);
+  if (!auth.authorized) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { searchParams } = new URL(request.url);
   const anime_id = parseInt(searchParams.get("anime_id") || "0");
   const season_id = parseInt(searchParams.get("season_id") || "0");

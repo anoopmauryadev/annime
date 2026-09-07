@@ -10,6 +10,8 @@ export const dynamic = 'force-dynamic';
 type RouteContext<T extends string> = { params: Promise<{ id: string }> };
 
 export async function GET(request: Request, ctx: RouteContext<'/api/admin/anime/[id]'>) {
+  const auth = requireAdminAuth(request);
+  if (!auth.authorized) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const params = await ctx.params;
   const anime = getAnimeById(parseInt(params.id));
   if (!anime) return NextResponse.json({ error: "Not found" }, { status: 404 });

@@ -1,5 +1,7 @@
 Security review — Anime Zone — 8 September 2026
 
+Remediation status: all findings below were addressed in the local workspace on 8 September 2026. The original descriptions are retained as the audit record. Automated security tests, VIP intro-download tests, browser download regression and the production build pass. The updated VPS installer must be deployed before these protections apply to the live site.
+
 Scope: current local application, authentication and access controls, uploads/media, dependency lockfile and VPS setup script. Production code and the real database were not changed. The local web server remained stopped. The VPS configuration, logs and deployed database were not inspected; this review does not establish whether anyone has exploited these issues.
 
 Priority: fix administrator access first, then public upload and player-proxy exposure, then enforce media and key authorization. The application currently has confirmed security issues despite the dependency audit being clean.
@@ -40,7 +42,7 @@ Priority: fix administrator access first, then public upload and player-proxy ex
 
    The public episode API returns full stream/download URLs. The watch page also passes those URLs to client components. Original videos and HLS files live under public uploads, outside access checks; the supplied Nginx setup serves them directly. A visitor can request the raw URL instead of going through the gated player or VIP download route. The intro-download endpoint's checks do not protect these original files.
 
-   Evidence: [episodes/[id]/route.ts:15](/Users/anoopmaurya/Desktop/annime/src/app/api/episodes/[id]/route.ts:15), [watch page:92](/Users/anoopmaurya/Desktop/annime/src/app/(public)/watch/[slug]/[episode]/page.tsx:92), [setup.sh:111](/Users/anoopmaurya/Desktop/annime/setup.sh:111).
+   Evidence: [episodes/[id]/route.ts:15](/Users/anoopmaurya/Desktop/annime/src/app/api/episodes/[id]/route.ts:15), [watch page:81](/Users/anoopmaurya/Desktop/annime/src/app/(public)/watch/[slug]/[episode]/page.tsx:81), [setup.sh:111](/Users/anoopmaurya/Desktop/annime/setup.sh:111).
 
    Fix: protect original media, playlists and segments with server-side authorization/private storage, and configure Nginx accordingly. Serve protected download links only after checking current membership. This finding is established by code/configuration tracing; the stopped site was not restarted to download real media.
 
@@ -100,4 +102,4 @@ Additional observations:
 - Targeted tracked-file/history checks found no tracked environment files, databases or private-key files. The secret scan was not exhaustive.
 - No public path-traversal bypass was found in the new intro-download endpoint; it uses canonical path containment and current DB VIP checks. No shell injection was demonstrated in FFmpeg calls, which use argument arrays.
 
-Only this report was added to the workspace. Security fixes have not been applied in this review.
+The local default administrator credential was rotated, old sessions were invalidated, and a mode-600 bootstrap credential plus a mode-600 pre-migration database backup were created under `data/`. Delete the bootstrap file after changing the administrator password. The local web server is stopped.

@@ -134,7 +134,7 @@ export default function EpisodesPage() {
       }
     };
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') || '' : '';
+    const token = '';
 
     // 1. Upload video in 4MB chunks if provided
     let preUploadedVideoUrl = '';
@@ -272,7 +272,7 @@ export default function EpisodesPage() {
       }
     };
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') || '' : '';
+    const token = '';
 
     // 1. Upload video file first in 4MB chunks
     let preUploadedVideoUrl = '';

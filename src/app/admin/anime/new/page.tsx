@@ -51,7 +51,7 @@ export default function NewAnimePage() {
       }
     };
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') || '' : '';
+    const token = '';
 
     // 1. Upload video file first in 4MB chunks (prevents 1.4MB freeze on mobile & Mac)
     let preUploadedVideoUrl = '';

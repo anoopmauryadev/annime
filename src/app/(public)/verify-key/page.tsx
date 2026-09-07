@@ -110,8 +110,7 @@ function VerifyKeyContent() {
 
   // Claim & Activate
   const handleClaimActivate = async (forcedToken?: string) => {
-    const activeAuthToken =
-      forcedToken || token || (typeof window !== "undefined" ? localStorage.getItem("user_token") : null);
+    const activeAuthToken = forcedToken || token;
     if (!claimToken) return;
 
     setIsActivating(true);

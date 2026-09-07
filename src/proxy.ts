@@ -52,6 +52,13 @@ function isMaintenanceActive(): boolean {
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  const protectedMedia = pathname.match(/^\/uploads\/(videos|hls|downloads)\/(.+)$/);
+  if (protectedMedia) {
+    const target = request.nextUrl.clone();
+    target.pathname = `/api/media/${protectedMedia[1]}/${protectedMedia[2]}`;
+    return NextResponse.rewrite(target);
+  }
+
   // ─── 1. Never block Admin panel, APIs, static files, or internal Next.js assets ─
   if (
     pathname.startsWith('/admin') ||
@@ -97,6 +104,6 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Apply proxy only to page routes; exclude API routes and static assets
-    '/((?!api|_next/static|_next/image|favicon.ico|uploads/).*)',
+    '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 };

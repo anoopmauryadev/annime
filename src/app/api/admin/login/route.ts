@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { verifyAdmin } from '@/lib/db';
-import { generateAdminToken } from '@/lib/auth';
+import { generateAdminToken, adminCookieOptions } from '@/lib/auth';
+import { requestIdentity } from '@/lib/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,10 +24,7 @@ setInterval(() => {
 }, 30 * 60 * 1000);
 
 function getClientIp(req: Request): string {
-  return req.headers.get('x-client-ip')
-    || req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-    || req.headers.get('x-real-ip')
-    || 'unknown';
+  return requestIdentity(req);
 }
 
 export async function POST(req: Request) {
@@ -53,6 +51,9 @@ export async function POST(req: Request) {
 
   try {
     const { username, password } = await req.json();
+    const accountKey = `${ip}:${String(username || "").trim().toLowerCase()}`;
+    const accountAttempt = loginAttempts.get(accountKey);
+    if (accountAttempt && now < accountAttempt.lockedUntil) return NextResponse.json({ error: "Too many login attempts. Try again later." }, { status: 429 });
 
     if (!username || !password) {
       return NextResponse.json({ error: 'Username and password are required' }, { status: 400 });
@@ -62,14 +63,10 @@ export async function POST(req: Request) {
     if (user) {
       // Successful login — clear rate limit for this IP
       loginAttempts.delete(ip);
+      loginAttempts.delete(accountKey);
       const token = generateAdminToken(user);
-      const response = NextResponse.json({ success: true, token, username: user.username });
-      response.cookies.set('admin_token', token, {
-        path: '/',
-        httpOnly: false,
-        sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60,
-      });
+      const response = NextResponse.json({ success: true, username: user.username });
+      response.cookies.set('admin_token', token, adminCookieOptions);
       return response;
     }
 
@@ -87,6 +84,10 @@ export async function POST(req: Request) {
     }
 
     loginAttempts.set(ip, current);
+    const byAccount = loginAttempts.get(accountKey) || { count: 0, firstAttempt: now, lockedUntil: 0 };
+    byAccount.count += 1;
+    if (byAccount.count >= MAX_ATTEMPTS) byAccount.lockedUntil = now + LOCKOUT_MS;
+    loginAttempts.set(accountKey, byAccount);
     const remaining = MAX_ATTEMPTS - current.count;
     return NextResponse.json(
       { error: `Invalid username or password. ${remaining} attempt(s) remaining.` },
@@ -96,4 +97,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Failed to process login' }, { status: 500 });
   }
 }
-

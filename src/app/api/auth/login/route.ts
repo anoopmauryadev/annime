@@ -1,5 +1,7 @@
 import { verifyUser } from "@/lib/db";
-import { generateUserToken } from "@/lib/auth";
+import { generateUserToken, userCookieOptions } from "@/lib/auth";
+import { NextResponse } from "next/server";
+import { rateLimit } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -7,6 +9,8 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { emailOrUsername, password } = body;
+    const limited = rateLimit(request, "user-login", 10, 15 * 60 * 1000, String(emailOrUsername || ""));
+    if (limited) return limited;
 
     if (!emailOrUsername || !password) {
       return Response.json(
@@ -25,7 +29,7 @@ export async function POST(request: Request) {
 
     const token = generateUserToken(user);
 
-    const response = Response.json({
+    const response = NextResponse.json({
       success: true,
       user: {
         id: user.id,
@@ -34,13 +38,9 @@ export async function POST(request: Request) {
         avatar: user.avatar,
         is_vip: user.is_vip || 0,
       },
-      token,
     });
 
-    response.headers.set(
-      "Set-Cookie",
-      `user_token=${encodeURIComponent(token)}; Path=/; Max-Age=2592000; SameSite=Lax`
-    );
+    response.cookies.set("user_token", token, userCookieOptions);
 
     return response;
   } catch (err: any) {

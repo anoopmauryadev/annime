@@ -4,6 +4,8 @@ import fs from "fs/promises";
 import { existsSync, createWriteStream } from "fs";
 import path from "path";
 import crypto from "crypto";
+import { validateSavedMedia } from "@/lib/upload";
+import { rateLimit } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes per chunk (each chunk is only 4MB, takes 1-3s)
@@ -15,6 +17,8 @@ export async function POST(request: Request) {
   if (!auth.authorized) {
     return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: 401 });
   }
+  const limited = rateLimit(request, "video-chunks", 3000, 60 * 60 * 1000, String(auth.admin?.id || ""));
+  if (limited) return limited;
 
   try {
     const formData = await request.formData();
@@ -26,6 +30,9 @@ export async function POST(request: Request) {
 
     if (!chunk || !uploadId) {
       return NextResponse.json({ error: "Missing chunk or uploadId" }, { status: 400 });
+    }
+    if (!Number.isInteger(chunkIndex) || !Number.isInteger(totalChunks) || chunkIndex < 0 || totalChunks < 1 || totalChunks > 2560 || chunk.size > 5 * 1024 * 1024) {
+      return NextResponse.json({ error: "Invalid upload chunk" }, { status: 400 });
     }
 
     // Path traversal safe validation
@@ -69,6 +76,9 @@ export async function POST(request: Request) {
 
       // Move completed temp file to final location
       await fs.rename(tempFilePath, finalFilePath);
+
+      try { await validateSavedMedia(finalFilePath, true); }
+      catch (error) { await fs.unlink(finalFilePath).catch(() => {}); throw error; }
 
       const stat = await fs.stat(finalFilePath);
       const videoUrl = `/uploads/videos/${finalFileName}`;

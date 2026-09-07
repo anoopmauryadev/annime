@@ -13,7 +13,8 @@ function LoginForm() {
   const { login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get("redirect") || "/";
+  const requestedRedirect = searchParams.get("redirect") || "/";
+  const redirectUrl = requestedRedirect.startsWith("/") && !requestedRedirect.startsWith("//") ? requestedRedirect : "/";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,7 +35,7 @@ function LoginForm() {
         return;
       }
 
-      login(data.token, data.user);
+      login("", data.user);
       window.location.href = redirectUrl;
     } catch (err: any) {
       setError("Network error. Please check your connection.");

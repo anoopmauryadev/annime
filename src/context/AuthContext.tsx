@@ -34,20 +34,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchProfile = async (authToken: string) => {
+  const fetchProfile = async () => {
     try {
       const res = await fetch("/api/auth/me", {
-        headers: { Authorization: `Bearer ${authToken}` },
+        credentials: "same-origin",
       });
       if (res.ok) {
         const data = await res.json();
         if (data.user) {
           setUser(data.user);
-          localStorage.setItem("user_data", JSON.stringify(data.user));
+          setToken("cookie-session");
         }
       } else if (res.status === 401) {
-        // Token expired / invalid
-        logout();
+        setToken(null);
+        setUser(null);
       }
     } catch {
       // Network error, keep existing cached user
@@ -55,47 +55,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    const savedToken = localStorage.getItem("user_token");
-    const savedUser = localStorage.getItem("user_data");
-
-    if (savedToken && savedUser) {
-      try {
-        setToken(savedToken);
-        setUser(JSON.parse(savedUser));
-        // Sync cookie
-        document.cookie = `user_token=${encodeURIComponent(savedToken)}; path=/; max-age=2592000; SameSite=Lax`;
-        // Verify and refresh latest VIP and profile status from DB
-        fetchProfile(savedToken);
-      } catch {
-        localStorage.removeItem("user_token");
-        localStorage.removeItem("user_data");
-        document.cookie = "user_token=; path=/; max-age=0";
-      }
-    }
-    setIsLoading(false);
+    localStorage.removeItem("user_token");
+    localStorage.removeItem("user_data");
+    const timer = window.setTimeout(() => { fetchProfile().finally(() => setIsLoading(false)); }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const refreshUser = async () => {
-    const currentToken = token || localStorage.getItem("user_token");
-    if (currentToken) {
-      await fetchProfile(currentToken);
-    }
+    await fetchProfile();
   };
 
-  const login = (newToken: string, newUser: User) => {
-    setToken(newToken);
+  const login = (_newToken: string, newUser: User) => {
+    setToken("cookie-session");
     setUser(newUser);
-    localStorage.setItem("user_token", newToken);
-    localStorage.setItem("user_data", JSON.stringify(newUser));
-    document.cookie = `user_token=${encodeURIComponent(newToken)}; path=/; max-age=2592000; SameSite=Lax`;
   };
 
   const logout = () => {
     setToken(null);
     setUser(null);
-    localStorage.removeItem("user_token");
-    localStorage.removeItem("user_data");
-    document.cookie = "user_token=; path=/; max-age=0";
+    fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
   };
 
   return (

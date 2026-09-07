@@ -11,17 +11,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem('adminToken');
-    if (!token && !pathname.includes('/admin/login')) {
-      router.push('/admin/login');
-    } else {
-      setIsAuthenticated(true);
-    }
+    localStorage.removeItem('adminToken');
+    if (pathname.includes('/admin/login')) { setIsAuthenticated(true); return; }
+    fetch('/api/admin/session').then((res) => {
+      if (!res.ok) router.replace('/admin/login'); else setIsAuthenticated(true);
+    }).catch(() => router.replace('/admin/login'));
   }, [pathname, router]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('adminToken');
-    document.cookie = 'admin_token=; path=/; max-age=0; SameSite=Lax';
+  const handleLogout = async () => {
+    await fetch('/api/admin/session', { method: 'DELETE' }).catch(() => {});
     router.push('/admin/login');
   };
 

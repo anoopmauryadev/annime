@@ -9,6 +9,8 @@ export const dynamic = 'force-dynamic';
 type RouteContext<T extends string> = { params: Promise<{ id: string }> };
 
 export async function GET(request: Request, ctx: RouteContext<'/api/admin/episodes/[id]'>) {
+  const auth = requireAdminAuth(request);
+  if (!auth.authorized) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const params = await ctx.params;
   const id = parseInt(params.id);
   

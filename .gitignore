@@ -45,6 +45,8 @@ next-env.d.ts
 data/*.db
 data/*.db-shm
 data/*.db-wal
+data/admin-bootstrap.txt
+data/security-backup-*.db
 
 # uploaded videos & HLS (too large for git)
 public/uploads/videos/

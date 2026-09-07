@@ -13,10 +13,8 @@ export default function LoginPage() {
 
   // If already authenticated, redirect straight to admin panel
   useEffect(() => {
-    const token = localStorage.getItem('adminToken');
-    if (token) {
-      router.replace('/admin');
-    }
+    localStorage.removeItem('adminToken');
+    fetch('/api/admin/session').then((res) => { if (res.ok) router.replace('/admin'); }).catch(() => {});
   }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -31,11 +29,7 @@ export default function LoginPage() {
         body: JSON.stringify({ username, password }),
       });
       const data = await res.json();
-      if (res.ok && data.token) {
-        // Save to localStorage for client-side fetches
-        localStorage.setItem('adminToken', data.token);
-        // Save to cookie so proxy & server routes recognize admin session
-        document.cookie = `admin_token=${encodeURIComponent(data.token)}; path=/; max-age=${7 * 24 * 3600}; SameSite=Lax`;
+      if (res.ok) {
         router.push('/admin');
       } else {
         setError(data.error || 'Login failed');

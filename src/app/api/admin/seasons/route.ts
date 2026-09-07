@@ -5,6 +5,8 @@ import { NextResponse } from "next/server";
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const auth = requireAdminAuth(request);
+  if (!auth.authorized) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { searchParams } = new URL(request.url);
   const anime_id = parseInt(searchParams.get("anime_id") || "0");
   if (!anime_id) return NextResponse.json([]);

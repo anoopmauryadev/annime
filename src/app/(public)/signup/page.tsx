@@ -15,7 +15,8 @@ function SignupForm() {
   const { login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get("redirect") || "/";
+  const requestedRedirect = searchParams.get("redirect") || "/";
+  const redirectUrl = requestedRedirect.startsWith("/") && !requestedRedirect.startsWith("//") ? requestedRedirect : "/";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,8 +27,8 @@ function SignupForm() {
       return;
     }
 
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters long");
+    if (password.length < 10) {
+      setError("Password must be at least 10 characters long");
       return;
     }
 
@@ -47,7 +48,7 @@ function SignupForm() {
         return;
       }
 
-      login(data.token, data.user);
+      login("", data.user);
       window.location.href = redirectUrl;
     } catch (err: any) {
       setError("Network error. Please check your connection.");
@@ -119,7 +120,7 @@ function SignupForm() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimum 6 characters"
+                placeholder="Minimum 10 characters"
                 className="w-full bg-[#1e1e24] text-white text-sm rounded-lg pl-10 pr-4 py-2.5 outline-none focus:ring-1 focus:ring-[#ff640a] transition-all"
               />
               <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />

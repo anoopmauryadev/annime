@@ -136,6 +136,15 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId }: VideoPlayerProps) {
     fetchKeyStatus();
   }, [user, token]);
 
+  useEffect(() => {
+    const reloadKey = `access_reload_${episodeId || "episode"}`;
+    if (keyAccess.active && servers.length === 0 && sessionStorage.getItem(reloadKey) !== "1") {
+      sessionStorage.setItem(reloadKey, "1");
+      window.location.reload();
+    }
+    if (servers.length > 0) sessionStorage.removeItem(reloadKey);
+  }, [keyAccess.active, servers.length, episodeId]);
+
   // Auto-refresh key status when user returns to this browser tab after completing shortener
   useEffect(() => {
     const handleFocus = () => {
@@ -370,10 +379,11 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId }: VideoPlayerProps) {
       }
     }
 
-    if (url.includes("zephyrix.org") || url.includes("watchanimeworld")) {
-      return `/api/player-proxy?url=${encodeURIComponent(url)}`;
-    }
-    return url;
+    if (url.startsWith("/")) return url;
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === "https:" || (parsed.protocol === "http:" && process.env.NODE_ENV !== "production") ? parsed.href : "";
+    } catch { return ""; }
   };
 
   const embedSrc = server ? getEmbedSrc(server.stream_url) : "";
@@ -473,7 +483,7 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId }: VideoPlayerProps) {
     return found ? found.name : "Auto";
   };
 
-  if (!servers || servers.length === 0) {
+  if ((!servers || servers.length === 0) && !isLoading && !!user && !keyAccess.isLoading && (keyAccess.active || keyAccess.is_vip)) {
     return (
       <div className="aspect-video w-full bg-black flex flex-col items-center justify-center text-gray-500 rounded-xl">
         <MonitorPlay size={48} className="mb-4 opacity-50" />
@@ -661,6 +671,7 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId }: VideoPlayerProps) {
             src={embedSrc}
             allowFullScreen
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            sandbox="allow-scripts allow-same-origin allow-presentation"
             referrerPolicy="origin"
             className="absolute inset-0 w-full h-full border-0"
           ></iframe> : null

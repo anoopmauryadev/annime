@@ -8,6 +8,8 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 1800; // 30 minutes for slow mobile uploads
 
 export async function GET(req: Request) {
+  const auth = requireAdminAuth(req);
+  if (!auth.authorized) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { searchParams } = new URL(req.url);
   const search = searchParams.get('search') || '';
   const sort = searchParams.get('sort') || '';

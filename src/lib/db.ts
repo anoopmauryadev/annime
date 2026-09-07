@@ -28,7 +28,8 @@ function initializeDatabase(db: Database.Database) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now')),
+      session_version INTEGER NOT NULL DEFAULT 1
     );
 
     CREATE TABLE IF NOT EXISTS users (
@@ -225,6 +226,11 @@ function initializeDatabase(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_vip_codes_used ON vip_codes(is_used);
   `);
 
+  const adminColumns = db.prepare("PRAGMA table_info(admin_users)").all() as { name: string }[];
+  if (!adminColumns.some((column) => column.name === "session_version")) {
+    db.exec("ALTER TABLE admin_users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1");
+  }
+
   // Migration: Add is_vip, key_expires_at, and vip_expires_at columns to users table if they don't exist
   try {
     db.exec("ALTER TABLE users ADD COLUMN is_vip INTEGER DEFAULT 0");
@@ -272,11 +278,22 @@ function initializeDatabase(db: Database.Database) {
     .prepare("SELECT id FROM admin_users WHERE username = ?")
     .get("admin");
   if (!adminExists) {
-    const hash = bcrypt.hashSync("admin123", 10);
+    const bootstrapPassword = crypto.randomBytes(24).toString("base64url");
+    const hash = bcrypt.hashSync(bootstrapPassword, 12);
     db.prepare("INSERT INTO admin_users (username, password_hash) VALUES (?, ?)").run(
       "admin",
       hash
     );
+    const bootstrapPath = path.join(path.dirname(DB_PATH), "admin-bootstrap.txt");
+    fs.writeFileSync(bootstrapPath, `username=admin\npassword=${bootstrapPassword}\nDelete this file after signing in and changing the password.\n`, { mode: 0o600 });
+  } else {
+    const current = db.prepare("SELECT password_hash FROM admin_users WHERE username = ?").get("admin") as { password_hash: string };
+    if (bcrypt.compareSync("admin123", current.password_hash)) {
+      const bootstrapPassword = crypto.randomBytes(24).toString("base64url");
+      db.prepare("UPDATE admin_users SET password_hash = ?, session_version = session_version + 1 WHERE username = ?")
+        .run(bcrypt.hashSync(bootstrapPassword, 12), "admin");
+      fs.writeFileSync(path.join(path.dirname(DB_PATH), "admin-bootstrap.txt"), `username=admin\npassword=${bootstrapPassword}\nDelete this file after signing in and changing the password.\n`, { mode: 0o600 });
+    }
   }
 
   // Seed sample anime if empty
@@ -910,15 +927,15 @@ export function deleteDownload(id: number): void {
 export function verifyAdmin(
   username: string,
   password: string
-): { id: number; username: string } | null {
+): { id: number; username: string; session_version: number } | null {
   const db = getDb();
   const user = db
     .prepare("SELECT * FROM admin_users WHERE username = ?")
-    .get(username) as { id: number; username: string; password_hash: string } | undefined;
+    .get(username) as { id: number; username: string; password_hash: string; session_version: number } | undefined;
 
   if (!user) return null;
   if (!bcrypt.compareSync(password, user.password_hash)) return null;
-  return { id: user.id, username: user.username };
+  return { id: user.id, username: user.username, session_version: user.session_version };
 }
 
 // ---- Regular User Queries ----
@@ -1589,28 +1606,27 @@ export function redeemAccessKey(
   let newExpiresAt: string = "";
 
   const redeemTx = db.transaction(() => {
+    const calculated = db.prepare(
+      "SELECT datetime(MAX(COALESCE(key_expires_at, datetime('now')), datetime('now')), '+' || ? || ' hours') AS expires_at FROM users WHERE id = ?"
+    ).get(duration, userId) as { expires_at: string } | undefined;
+    if (!calculated?.expires_at) throw new Error("User not found");
+    newExpiresAt = calculated.expires_at;
     // 1. Mark key as used
     db.prepare(
       `UPDATE access_keys
        SET status = 'used',
            used_by_user_id = ?,
            activated_at = datetime('now'),
-           expires_at = datetime('now', '+' || ? || ' hours')
+           expires_at = ?
        WHERE id = ?`
-    ).run(userId, duration, key.id);
+    ).run(userId, newExpiresAt, key.id);
 
     // 2. Extend user's key_expires_at
     db.prepare(
       `UPDATE users
-       SET key_expires_at = datetime(
-         MAX(COALESCE(key_expires_at, datetime('now')), datetime('now')),
-         '+' || ? || ' hours'
-       )
+       SET key_expires_at = ?
        WHERE id = ?`
-    ).run(duration, userId);
-
-    const userRow = db.prepare("SELECT key_expires_at FROM users WHERE id = ?").get(userId) as { key_expires_at: string };
-    newExpiresAt = userRow.key_expires_at;
+    ).run(newExpiresAt, userId);
   });
 
   redeemTx();
@@ -1787,12 +1803,26 @@ export function getAllAccessKeys(opts: {
 
 export function revokeAccessKey(id: number): boolean {
   const db = getDb();
-  const res = db.prepare("UPDATE access_keys SET status = 'revoked' WHERE id = ?").run(id);
+  const key = db.prepare("SELECT used_by_user_id FROM access_keys WHERE id = ?").get(id) as { used_by_user_id: number | null } | undefined;
+  if (!key) return false;
+  const res = db.transaction(() => {
+    const changed = db.prepare("UPDATE access_keys SET status = 'revoked' WHERE id = ?").run(id);
+    if (key.used_by_user_id) {
+      const remaining = db.prepare(
+        "SELECT MAX(expires_at) AS expires_at FROM access_keys WHERE used_by_user_id = ? AND status = 'used' AND expires_at > datetime('now')"
+      ).get(key.used_by_user_id) as { expires_at: string | null };
+      db.prepare("UPDATE users SET key_expires_at = ? WHERE id = ?").run(remaining.expires_at, key.used_by_user_id);
+    }
+    return changed;
+  })();
   return res.changes > 0;
 }
 
 export function deleteAccessKey(id: number): boolean {
   const db = getDb();
+  const existing = db.prepare("SELECT status FROM access_keys WHERE id = ?").get(id) as { status: string } | undefined;
+  if (!existing) return false;
+  if (existing.status === "used") revokeAccessKey(id);
   const res = db.prepare("DELETE FROM access_keys WHERE id = ?").run(id);
   return res.changes > 0;
 }
@@ -1984,4 +2014,3 @@ export function redeemVipCode(
 
   return tx();
 }
-

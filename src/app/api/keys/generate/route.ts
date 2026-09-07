@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserFromRequest } from "@/lib/auth";
 import {
   createAccessKey,
+  deleteAccessKey,
   getSiteSettings,
   isUserKeyActive,
 } from "@/lib/db";
 import crypto from "crypto";
+import { rateLimit } from "@/lib/rateLimit";
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,9 +18,12 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
+    const limited = rateLimit(request, "key-generate", 5, 60 * 60 * 1000, String(user.id));
+    if (limited) return limited;
 
     // 1. Check if user is already VIP
-    if (user.is_vip === 1) {
+    const currentAccess = isUserKeyActive(user.id);
+    if (currentAccess.is_vip) {
       return NextResponse.json({
         status: "vip",
         is_vip: true,
@@ -37,7 +42,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Check if user already has an active 48h pass
-    const keyStatus = isUserKeyActive(user.id);
+    const keyStatus = currentAccess;
     if (keyStatus.active) {
       return NextResponse.json({
         status: "already_active",
@@ -112,7 +117,6 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({
               success: true,
               redirect_url: data.shortenedUrl,
-              claim_token: claimToken,
               provider: settings.shortener_provider || "gplinks",
             });
           }
@@ -125,12 +129,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fallback: If no API token configured or provider down, redirect straight to verify page
+    if (process.env.NODE_ENV === "production") {
+      deleteAccessKey(keyRecord.id);
+      return NextResponse.json({ error: "Key verification provider is unavailable. Please try again later." }, { status: 503 });
+    }
+
+    // Local development only: no ad provider is required.
     return NextResponse.json({
       success: true,
       redirect_url: destinationUrl,
-      claim_token: claimToken,
-      test_mode: !shortenerApiToken,
+      test_mode: true,
     });
   } catch (error: any) {
     console.error("[KeyGen] Error generating key:", error);

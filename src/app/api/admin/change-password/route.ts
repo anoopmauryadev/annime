@@ -20,9 +20,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (newPassword.length < 6) {
+    if (newPassword.length < 12) {
       return NextResponse.json(
-        { error: "New password must be at least 6 characters" },
+        { error: "New password must be at least 12 characters" },
         { status: 400 }
       );
     }
@@ -42,11 +42,12 @@ export async function POST(req: NextRequest) {
     }
 
     const newHash = bcrypt.hashSync(newPassword, 10);
-    db.prepare("UPDATE admin_users SET password_hash = ? WHERE id = ?").run(newHash, user.id);
+    db.prepare("UPDATE admin_users SET password_hash = ?, session_version = session_version + 1 WHERE id = ?").run(newHash, user.id);
 
-    return NextResponse.json({ success: true, message: "Password changed successfully" });
+    const response = NextResponse.json({ success: true, message: "Password changed. Please sign in again." });
+    response.cookies.set("admin_token", "", { httpOnly: true, sameSite: "strict", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 0 });
+    return response;
   } catch {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
-

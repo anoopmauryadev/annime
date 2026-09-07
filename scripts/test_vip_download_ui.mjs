@@ -34,10 +34,12 @@ export async function GET(){return new Response(await readFile("public/brand/ani
     if(r.request().method()==='POST') return r.fulfill({status:202,json:{status:'processing'}});
     if(r.request().url().includes('status=1')) {prepared=true;return r.fulfill({json:{status:'ready'}});}
     assert.ok(prepared,'Browser only downloads after preparation');
-    assert.match(r.request().headers().cookie || '', /user_token=/);
+    assert.equal(r.request().headers().authorization, 'Bearer cookie-session');
     return r.continue({url:'http://localhost:3000/vip-download-check/file'});
   });
   await page.goto('http://localhost:3000/vip-download-check');
+  await page.waitForFunction(() => localStorage.getItem('user_token') === null);
+  assert.equal(await page.evaluate(() => localStorage.getItem('user_token')), null, 'Legacy readable token is removed');
   const link=page.getByRole('link',{name:'Test download'});
   await link.waitFor();
   const saved=page.waitForEvent('download');

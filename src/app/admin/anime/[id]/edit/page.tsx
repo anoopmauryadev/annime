@@ -76,8 +76,6 @@ export default function EditAnimePage() {
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', `/api/admin/anime/${id}`);
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') : '';
-    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 
     xhr.upload.onprogress = (ev) => {
       if (ev.lengthComputable) {
