@@ -98,10 +98,58 @@ server {
 
     client_max_body_size 10G;
 
-    proxy_connect_timeout 600;
-    proxy_send_timeout 600;
-    proxy_read_timeout 600;
-    send_timeout 600;
+    client_max_body_size 10G;
+    client_body_buffer_size 1M;
+    client_body_timeout 1800s;
+    client_header_timeout 1800s;
+    proxy_connect_timeout 600s;
+    proxy_send_timeout 1800s;
+    proxy_read_timeout 1800s;
+    send_timeout 1800s;
+
+    # Direct static streaming for uploads (Videos, HLS m3u8/ts, Images)
+    location /uploads/ {
+        alias $APP_DIR/public/uploads/;
+        expires 30d;
+        add_header Cache-Control "public, no-transform";
+        add_header Access-Control-Allow-Origin *;
+        add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS";
+        add_header Access-Control-Allow-Headers "*";
+        sendfile on;
+        sendfile_max_chunk 1m;
+        tcp_nopush on;
+        tcp_nodelay on;
+
+        types {
+            application/vnd.apple.mpegurl m3u8;
+            video/mp2t ts;
+            video/mp4 mp4;
+            video/webm webm;
+            video/x-matroska mkv;
+            image/jpeg jpg jpeg;
+            image/png png;
+            image/webp webp;
+            image/gif gif;
+        }
+    }
+
+    # Video & Media Upload endpoint with unbuffered streaming
+    location /api/admin/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+
+        client_max_body_size 10G;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_read_timeout 1800s;
+        proxy_send_timeout 1800s;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:3000;
@@ -119,6 +167,8 @@ NGINX
 
 ln -sf /etc/nginx/sites-available/annime /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
+rm -f /etc/nginx/conf.d/upload_tuning.conf 2>/dev/null || true
+rm -f /etc/nginx/conf.d/video_streaming.conf 2>/dev/null || true
 nginx -t
 systemctl restart nginx
 
