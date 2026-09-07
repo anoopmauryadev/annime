@@ -25,18 +25,32 @@ export default function HeroSpotlight() {
 
   if (!spotlights.length) {
     return (
-      <div className="relative w-full h-[45vh] md:h-[65vh] bg-gradient-to-r from-[#141519] via-[#0a0a0c] to-[#000000] flex items-center justify-center p-6">
-        <div className="text-center max-w-xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#ff640a]/20 text-[#ff640a] text-xs font-semibold mb-4">
-            <Sparkles size={14} /> Featured Anime
+      <div className="relative w-full h-[45vh] md:h-[60vh] bg-gradient-to-r from-[#141519] via-[#0a0a0c] to-[#000000] flex items-center justify-center p-6 text-center border-b border-white/5">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,100,10,0.15),transparent_60%)] pointer-events-none" />
+        <div className="relative z-10 max-w-xl">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#ff640a]/15 border border-[#ff640a]/30 text-[#ff640a] text-xs font-semibold mb-4">
+            <Sparkles size={14} /> Anime Zone India
           </div>
-          <h1 className="text-3xl md:text-5xl font-black text-white mb-3">Watch Hindi & Multi-Audio Anime</h1>
-          <p className="text-gray-400 text-sm md:text-base mb-6">
-            Admin panel se kisi bhi anime ka Spotlight ON karein, wo yahan hero banner me display hoga.
+          <h1 className="text-3xl md:text-5xl font-black text-white mb-3 tracking-tight">
+            Watch Hindi & Multi-Audio Anime
+          </h1>
+          <p className="text-gray-400 text-xs md:text-sm mb-6 leading-relaxed">
+            Stream your favorite anime series and movies in Full HD with Hindi Dubs, English Subs, and fast buffer-free playback.
           </p>
-          <Link href="/admin/spotlight" className="inline-flex items-center gap-2 bg-[#ff640a] hover:bg-[#e05300] text-white font-bold py-2.5 px-6 rounded text-sm transition-transform hover:scale-105">
-            Manage Spotlight
-          </Link>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Link
+              href="/series"
+              className="inline-flex items-center gap-2 bg-[#ff640a] hover:bg-[#e05300] text-white font-bold py-2.5 px-6 rounded-xl text-xs md:text-sm transition-transform hover:scale-105 shadow-lg shadow-[#ff640a]/20"
+            >
+              <Play fill="currentColor" size={14} /> Explore Series
+            </Link>
+            <Link
+              href="/movies"
+              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 text-white font-bold py-2.5 px-5 rounded-xl text-xs md:text-sm border border-white/10 transition-colors"
+            >
+              Browse Movies
+            </Link>
+          </div>
         </div>
       </div>
     );
