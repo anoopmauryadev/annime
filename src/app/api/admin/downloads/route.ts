@@ -12,6 +12,10 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);
   const id = parseInt(searchParams.get("id") || "0");
-  if (id) deleteDownload(id);
+  if (id) {
+    const { cleanupDownloadFiles } = await import("@/lib/fileCleanup");
+    cleanupDownloadFiles(id);
+    deleteDownload(id);
+  }
   return NextResponse.json({ success: true });
 }

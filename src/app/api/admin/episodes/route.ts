@@ -102,6 +102,10 @@ export async function DELETE(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const id = parseInt(searchParams.get("id") || "0");
-  if (id) deleteEpisode(id);
+  if (id) {
+    const { cleanupEpisodeFiles } = await import("@/lib/fileCleanup");
+    cleanupEpisodeFiles(id);
+    deleteEpisode(id);
+  }
   return NextResponse.json({ success: true });
 }

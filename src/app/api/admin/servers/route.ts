@@ -53,6 +53,10 @@ export async function DELETE(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const id = parseInt(searchParams.get("id") || "0");
-  if (id) deleteServer(id);
+  if (id) {
+    const { cleanupServerFiles } = await import("@/lib/fileCleanup");
+    cleanupServerFiles(id);
+    deleteServer(id);
+  }
   return NextResponse.json({ success: true });
 }

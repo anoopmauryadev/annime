@@ -3,6 +3,7 @@ import { saveUploadedFile } from "@/lib/upload";
 import { requireAdminAuth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import slugify from "slugify";
+import { cleanupAnimeFiles, deleteLocalFileOrDir } from "@/lib/fileCleanup";
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +25,7 @@ export async function PUT(request: Request, ctx: RouteContext<'/api/admin/anime/
   try {
     const params = await ctx.params;
     const id = parseInt(params.id);
+    const existing = getAnimeById(id);
     const formData = await request.formData();
     
     const data: any = {};
@@ -39,13 +41,22 @@ export async function PUT(request: Request, ctx: RouteContext<'/api/admin/anime/
     if (data.title) data.slug = slugify(data.title, { lower: true, strict: true });
     
     const posterFile = formData.get("poster") as File | null;
-    if (posterFile && posterFile.size > 0) data.poster = await saveUploadedFile(posterFile);
+    if (posterFile && posterFile.size > 0) {
+      if (existing?.poster) deleteLocalFileOrDir(existing.poster);
+      data.poster = await saveUploadedFile(posterFile);
+    }
     
     const backdropFile = formData.get("backdrop") as File | null;
-    if (backdropFile && backdropFile.size > 0) data.backdrop = await saveUploadedFile(backdropFile);
+    if (backdropFile && backdropFile.size > 0) {
+      if (existing?.backdrop) deleteLocalFileOrDir(existing.backdrop);
+      data.backdrop = await saveUploadedFile(backdropFile);
+    }
     
     const thumbnailFile = formData.get("thumbnail") as File | null;
-    if (thumbnailFile && thumbnailFile.size > 0) data.thumbnail = await saveUploadedFile(thumbnailFile);
+    if (thumbnailFile && thumbnailFile.size > 0) {
+      if (existing?.thumbnail) deleteLocalFileOrDir(existing.thumbnail);
+      data.thumbnail = await saveUploadedFile(thumbnailFile);
+    }
     
     updateAnime(id, data);
     return NextResponse.json({ success: true });
@@ -61,6 +72,8 @@ export async function DELETE(request: Request, ctx: RouteContext<'/api/admin/ani
   }
 
   const params = await ctx.params;
-  deleteAnime(parseInt(params.id));
+  const animeId = parseInt(params.id);
+  cleanupAnimeFiles(animeId);
+  deleteAnime(animeId);
   return NextResponse.json({ success: true });
 }
