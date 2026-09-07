@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { LayoutDashboard, Film, PlusCircle, Star, Menu, X, LogOut, Megaphone, Users, Key, Settings } from 'lucide-react';
+import { LayoutDashboard, Film, PlusCircle, Star, Menu, X, LogOut, Megaphone, Users, Key, Settings, MonitorCog } from 'lucide-react';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -33,6 +33,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { name: 'Broadcast & Telegram', href: '/admin/broadcasts', icon: Megaphone },
     { name: 'User Management', href: '/admin/users', icon: Users },
     { name: 'Key System (Shortener)', href: '/admin/keys', icon: Key },
+    { name: 'System Status', href: '/admin/system', icon: MonitorCog },
     { name: 'Settings (Password)', href: '/admin/settings', icon: Settings },
   ];
 

@@ -26,7 +26,7 @@ export default function DashboardPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const statsRes = await fetch('/api/admin/stats');
+      const statsRes = await adminFetch('/api/admin/stats');
       const statsData = await statsRes.json();
       setStats(statsData);
 
