@@ -599,8 +599,13 @@ export function getAllAnime(opts?: {
     }
   }
   if (opts?.search) {
-    where += " AND a.title LIKE @search";
-    params.search = `%${opts.search}%`;
+    const searchTerms = opts.search.trim().split(/\s+/).filter(Boolean);
+    if (searchTerms.length > 0) {
+      searchTerms.forEach((term, idx) => {
+        where += ` AND (a.title LIKE @search${idx} OR a.slug LIKE @search${idx})`;
+        params[`search${idx}`] = `%${term}%`;
+      });
+    }
   }
 
   let orderBy = "ORDER BY a.priority DESC, a.created_at DESC";
