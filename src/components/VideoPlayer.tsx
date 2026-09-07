@@ -519,32 +519,43 @@ export default function VideoPlayer({ servers, animeId, episodeId }: VideoPlayer
             )}
 
             {/* Primary Action Buttons */}
-            <div className="flex flex-wrap items-center justify-center gap-3 w-full max-w-md">
-              <button
-                onClick={handleGetKey}
-                disabled={isGeneratingKey}
-                className="flex-1 min-w-[180px] inline-flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-neutral-950 px-6 py-3 rounded-xl font-extrabold text-xs sm:text-sm transition-all shadow-xl shadow-amber-500/25 active:scale-95 disabled:opacity-50"
-              >
-                {isGeneratingKey ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    <span>Generating Link...</span>
-                  </>
-                ) : (
-                  <>
-                    <Key size={16} />
-                    <span>Get 48-Hour Key</span>
-                    <ExternalLink size={14} className="opacity-70" />
-                  </>
-                )}
-              </button>
+            <div className="flex flex-col items-center gap-3 w-full max-w-md">
+              <div className="flex flex-wrap items-center justify-center gap-3 w-full">
+                <button
+                  onClick={handleGetKey}
+                  disabled={isGeneratingKey}
+                  className="flex-1 min-w-[180px] inline-flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-neutral-950 px-6 py-3 rounded-xl font-extrabold text-xs sm:text-sm transition-all shadow-xl shadow-amber-500/25 active:scale-95 disabled:opacity-50"
+                >
+                  {isGeneratingKey ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      <span>Generating Link...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Key size={16} />
+                      <span>Get 48-Hour Key</span>
+                      <ExternalLink size={14} className="opacity-70" />
+                    </>
+                  )}
+                </button>
 
-              <button
-                onClick={() => setShowManualKeyInput(!showManualKeyInput)}
-                className="inline-flex items-center justify-center gap-2 bg-neutral-800/90 hover:bg-neutral-700 border border-white/10 text-white px-5 py-3 rounded-xl font-bold text-xs sm:text-sm transition-all"
+                <button
+                  onClick={() => setShowManualKeyInput(!showManualKeyInput)}
+                  className="inline-flex items-center justify-center gap-2 bg-neutral-800/90 hover:bg-neutral-700 border border-white/10 text-white px-5 py-3 rounded-xl font-bold text-xs sm:text-sm transition-all"
+                >
+                  <span>{showManualKeyInput ? "Close" : "I Have a Key"}</span>
+                </button>
+              </div>
+
+              {/* Upgrade to VIP Button */}
+              <Link
+                href="/account"
+                className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white px-6 py-3 rounded-xl font-extrabold text-xs sm:text-sm transition-all shadow-xl shadow-purple-500/25 active:scale-95"
               >
-                <span>{showManualKeyInput ? "Close" : "I Have a Key"}</span>
-              </button>
+                <Sparkles size={16} />
+                <span>Upgrade to VIP (No Ads, No Keys)</span>
+              </Link>
             </div>
 
             {/* Inline Key Code Input Form */}
