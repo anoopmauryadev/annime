@@ -338,8 +338,16 @@ export default function VideoPlayer({ servers, animeId, episodeId }: VideoPlayer
   };
 
   const embedSrc = server ? getEmbedSrc(server.stream_url) : "";
+  const isDirectVideo =
+    embedSrc.endsWith(".mp4") ||
+    embedSrc.endsWith(".webm") ||
+    embedSrc.includes(".mp4?") ||
+    embedSrc.includes("/uploads/videos/");
   const isHls = embedSrc.includes(".m3u8") || embedSrc.includes("/hls/");
-  const isEmbed = server?.server_type === "embed" && !isHls;
+  const isEmbed =
+    !isHls &&
+    (server?.server_type === "embed" ||
+      (!isDirectVideo && (embedSrc.startsWith("http://") || embedSrc.startsWith("https://"))));
 
   // Initialize HLS when stream is .m3u8 and user has active pass
   useEffect(() => {
@@ -588,8 +596,8 @@ export default function VideoPlayer({ servers, animeId, episodeId }: VideoPlayer
             key={embedSrc}
             src={embedSrc}
             allowFullScreen
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            sandbox="allow-scripts allow-same-origin allow-forms"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerPolicy="origin"
             className="absolute inset-0 w-full h-full border-0"
           ></iframe>
         ) : (
