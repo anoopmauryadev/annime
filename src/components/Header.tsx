@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { Search, Menu, X, Send, Shuffle, User, LogOut, Bookmark, Download, Crown, Key, Sparkles } from "lucide-react";
+import { Search, Menu, X, Send, Shuffle, User, LogOut, Bookmark, Download, Crown, Key, Sparkles, Ticket } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import BroadcastBanner from "@/components/BroadcastBanner";
@@ -214,6 +214,15 @@ export default function Header() {
                       className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-300 hover:text-white hover:bg-white/5 flex items-center gap-2 transition-colors"
                     >
                       <User size={14} className="text-[#ff640a]" /> My Account
+                    </Link>
+
+                    <Link
+                      href="/account"
+                      onClick={() => setUserDropdown(false)}
+                      className="w-full text-left px-4 py-2 text-xs font-semibold text-amber-400 hover:text-amber-300 hover:bg-white/5 flex items-center gap-2 transition-colors"
+                    >
+                      <Ticket size={14} className="text-amber-400" />
+                      <span>{user.is_vip === 1 ? "VIP Membership" : "Redeem VIP Code"}</span>
                     </Link>
 
                     {user.is_vip === 1 && (

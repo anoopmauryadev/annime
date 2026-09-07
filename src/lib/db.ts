@@ -208,9 +208,24 @@ function initializeDatabase(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_access_keys_code ON access_keys(key_code);
     CREATE INDEX IF NOT EXISTS idx_access_keys_claim ON access_keys(claim_token);
     CREATE INDEX IF NOT EXISTS idx_access_keys_used_by ON access_keys(used_by_user_id);
+
+    CREATE TABLE IF NOT EXISTS vip_codes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT UNIQUE NOT NULL,
+      duration_days INTEGER NOT NULL DEFAULT 30,
+      is_used INTEGER NOT NULL DEFAULT 0,
+      used_by_user_id INTEGER,
+      used_by_username TEXT,
+      used_at TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      notes TEXT DEFAULT '',
+      FOREIGN KEY (used_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_vip_codes_code ON vip_codes(code);
+    CREATE INDEX IF NOT EXISTS idx_vip_codes_used ON vip_codes(is_used);
   `);
 
-  // Migration: Add is_vip and key_expires_at columns to users table if they don't exist
+  // Migration: Add is_vip, key_expires_at, and vip_expires_at columns to users table if they don't exist
   try {
     db.exec("ALTER TABLE users ADD COLUMN is_vip INTEGER DEFAULT 0");
   } catch {
@@ -219,6 +234,12 @@ function initializeDatabase(db: Database.Database) {
 
   try {
     db.exec("ALTER TABLE users ADD COLUMN key_expires_at TEXT");
+  } catch {
+    // Column already exists, safe to ignore
+  }
+
+  try {
+    db.exec("ALTER TABLE users ADD COLUMN vip_expires_at TEXT");
   } catch {
     // Column already exists, safe to ignore
   }
@@ -234,6 +255,7 @@ function initializeDatabase(db: Database.Database) {
     shortener_api_url: "https://gplinks.in/api",
     shortener_api_token: "",
     key_duration_hours: "48",
+    vip_store_url: "https://t.me/",
   };
   const insertSetting = db.prepare(
     "INSERT OR IGNORE INTO site_settings (key, value) VALUES (?, ?)"
@@ -901,6 +923,7 @@ export interface UserRow {
   avatar: string;
   is_vip: number;
   key_expires_at?: string | null;
+  vip_expires_at?: string | null;
   created_at: string;
 }
 
@@ -928,7 +951,7 @@ export function createUser(data: {
 export function verifyUser(
   emailOrUsername: string,
   password: string
-): { id: number; username: string; email: string; avatar: string; is_vip: number; key_expires_at?: string | null } | null {
+): { id: number; username: string; email: string; avatar: string; is_vip: number; key_expires_at?: string | null; vip_expires_at?: string | null } | null {
   const db = getDb();
   const identifier = emailOrUsername.toLowerCase().trim();
   const user = db
@@ -944,13 +967,14 @@ export function verifyUser(
     avatar: user.avatar || "",
     is_vip: user.is_vip || 0,
     key_expires_at: user.key_expires_at || null,
+    vip_expires_at: user.vip_expires_at || null,
   };
 }
 
-export function getUserById(id: number): { id: number; username: string; email: string; avatar: string; is_vip: number; key_expires_at?: string | null } | null {
+export function getUserById(id: number): { id: number; username: string; email: string; avatar: string; is_vip: number; key_expires_at?: string | null; vip_expires_at?: string | null } | null {
   const db = getDb();
   const user = db
-    .prepare("SELECT id, username, email, avatar, is_vip, key_expires_at, created_at FROM users WHERE id = ?")
+    .prepare("SELECT id, username, email, avatar, is_vip, key_expires_at, vip_expires_at, created_at FROM users WHERE id = ?")
     .get(id) as UserRow | undefined;
 
   if (!user) return null;
@@ -961,6 +985,7 @@ export function getUserById(id: number): { id: number; username: string; email: 
     avatar: user.avatar || "",
     is_vip: user.is_vip || 0,
     key_expires_at: user.key_expires_at || null,
+    vip_expires_at: user.vip_expires_at || null,
   };
 }
 
@@ -1626,24 +1651,48 @@ export function isUserKeyActive(userId: number): {
   is_vip: boolean;
   key_system_disabled?: boolean;
   remaining_hours: number;
+  remaining_days?: number;
   expires_at: string | null;
+  vip_expires_at?: string | null;
 } {
   const db = getDb();
   const user = db
     .prepare(
-      `SELECT id, username, email, is_vip, key_expires_at,
+      `SELECT id, username, email, is_vip, key_expires_at, vip_expires_at,
               datetime('now') as current_time
        FROM users WHERE id = ?`
     )
-    .get(userId) as { id: number; username: string; email: string; is_vip: number; key_expires_at: string | null; current_time: string } | undefined;
+    .get(userId) as { id: number; username: string; email: string; is_vip: number; key_expires_at: string | null; vip_expires_at: string | null; current_time: string } | undefined;
 
   if (!user) {
     return { active: false, is_vip: false, remaining_hours: 0, expires_at: null };
   }
 
-  // VIP bypasses everything
+  // VIP Check (with expiration handling)
   if (user.is_vip === 1) {
-    return { active: true, is_vip: true, remaining_hours: 9999, expires_at: null };
+    if (user.vip_expires_at) {
+      const vipExpTime = new Date(user.vip_expires_at + (user.vip_expires_at.endsWith("Z") ? "" : "Z")).getTime();
+      const nowTime = Date.now();
+      if (vipExpTime > nowTime) {
+        const remainingDays = Math.max(1, Math.ceil((vipExpTime - nowTime) / (1000 * 60 * 60 * 24)));
+        const remainingHours = Math.max(1, Math.ceil((vipExpTime - nowTime) / (1000 * 60 * 60)));
+        return {
+          active: true,
+          is_vip: true,
+          remaining_hours: remainingHours,
+          remaining_days: remainingDays,
+          expires_at: user.vip_expires_at,
+          vip_expires_at: user.vip_expires_at,
+        };
+      } else {
+        // VIP expired — revoke VIP status
+        db.prepare("UPDATE users SET is_vip = 0 WHERE id = ?").run(userId);
+        user.is_vip = 0;
+      }
+    } else {
+      // Lifetime VIP (no expiration)
+      return { active: true, is_vip: true, remaining_hours: 9999, expires_at: null, vip_expires_at: null };
+    }
   }
 
   // Check if system is globally disabled in site_settings
@@ -1739,5 +1788,194 @@ export function deleteAccessKey(id: number): boolean {
   const res = db.prepare("DELETE FROM access_keys WHERE id = ?").run(id);
   return res.changes > 0;
 }
+
+// ---- VIP Codes System ----
+
+export interface VipCodeRow {
+  id: number;
+  code: string;
+  duration_days: number;
+  is_used: number;
+  used_by_user_id?: number | null;
+  used_by_username?: string | null;
+  used_at?: string | null;
+  created_at: string;
+  notes?: string | null;
+}
+
+function generateRandomVipCode(): string {
+  // Format: VIP-XXXX-XXXX-XXXX with uppercase alphanumeric characters
+  const segment1 = crypto.randomBytes(2).toString("hex").toUpperCase();
+  const segment2 = crypto.randomBytes(2).toString("hex").toUpperCase();
+  const segment3 = crypto.randomBytes(2).toString("hex").toUpperCase();
+  return `VIP-${segment1}-${segment2}-${segment3}`;
+}
+
+export function generateVipCodes(
+  count: number = 1,
+  durationDays: number = 30,
+  notes: string = ""
+): { createdCount: number; codes: string[] } {
+  const db = getDb();
+  const actualCount = Math.max(1, Math.min(count, 100));
+  const validDuration = durationDays > 0 ? durationDays : 30;
+
+  const insertStmt = db.prepare(
+    `INSERT INTO vip_codes (code, duration_days, notes) VALUES (?, ?, ?)`
+  );
+
+  const generated: string[] = [];
+
+  const runTx = db.transaction(() => {
+    for (let i = 0; i < actualCount; i++) {
+      let inserted = false;
+      let attempts = 0;
+      while (!inserted && attempts < 10) {
+        const code = generateRandomVipCode();
+        try {
+          insertStmt.run(code, validDuration, notes.trim());
+          generated.push(code);
+          inserted = true;
+        } catch (err: any) {
+          if (err?.code === "SQLITE_CONSTRAINT_UNIQUE") {
+            attempts++;
+          } else {
+            throw err;
+          }
+        }
+      }
+    }
+  });
+
+  runTx();
+  return { createdCount: generated.length, codes: generated };
+}
+
+export function getAllVipCodes(opts: {
+  status?: "all" | "unused" | "used";
+  search?: string;
+  page?: number;
+  limit?: number;
+} = {}): { codes: VipCodeRow[]; total: number } {
+  const db = getDb();
+  const page = Math.max(1, opts.page || 1);
+  const limit = Math.max(1, Math.min(opts.limit || 50, 200));
+  const offset = (page - 1) * limit;
+
+  const whereClauses: string[] = [];
+  const params: any[] = [];
+
+  if (opts.status === "unused") {
+    whereClauses.push("is_used = 0");
+  } else if (opts.status === "used") {
+    whereClauses.push("is_used = 1");
+  }
+
+  if (opts.search && opts.search.trim()) {
+    const term = `%${opts.search.trim()}%`;
+    whereClauses.push("(code LIKE ? OR used_by_username LIKE ? OR notes LIKE ?)");
+    params.push(term, term, term);
+  }
+
+  const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+
+  const totalRow = db
+    .prepare(`SELECT COUNT(*) as count FROM vip_codes ${whereSql}`)
+    .get(...params) as { count: number };
+
+  const codes = db
+    .prepare(
+      `SELECT * FROM vip_codes
+       ${whereSql}
+       ORDER BY id DESC
+       LIMIT ? OFFSET ?`
+    )
+    .all(...params, limit, offset) as VipCodeRow[];
+
+  return { codes, total: totalRow.count };
+}
+
+export function deleteVipCode(id: number): boolean {
+  const db = getDb();
+  const res = db.prepare("DELETE FROM vip_codes WHERE id = ?").run(id);
+  return res.changes > 0;
+}
+
+export function redeemVipCode(
+  rawCode: string,
+  userId: number,
+  username: string
+): { success: boolean; message: string; vip_expires_at?: string; duration_days?: number } {
+  const db = getDb();
+  const code = (rawCode || "").trim().toUpperCase();
+
+  if (!code) {
+    return { success: false, message: "Please enter a VIP code." };
+  }
+
+  const tx = db.transaction(() => {
+    // 1. Check code in DB
+    const vipCode = db
+      .prepare("SELECT * FROM vip_codes WHERE UPPER(code) = ?")
+      .get(code) as VipCodeRow | undefined;
+
+    if (!vipCode) {
+      return { success: false, message: "Invalid VIP code. Please verify and try again." };
+    }
+
+    if (vipCode.is_used === 1) {
+      return { success: false, message: "This VIP code has already been used." };
+    }
+
+    // 2. Fetch current user VIP status to support time stacking
+    const user = db
+      .prepare("SELECT is_vip, vip_expires_at FROM users WHERE id = ?")
+      .get(userId) as { is_vip: number; vip_expires_at: string | null } | undefined;
+
+    if (!user) {
+      return { success: false, message: "User account not found." };
+    }
+
+    // Determine baseline date
+    const now = new Date();
+    let baseDate = now;
+
+    if (user.is_vip === 1 && user.vip_expires_at) {
+      const existingExpiry = new Date(user.vip_expires_at);
+      if (!isNaN(existingExpiry.getTime()) && existingExpiry > now) {
+        // Active VIP already, stack time on top of existing expiration
+        baseDate = existingExpiry;
+      }
+    }
+
+    const durationDays = vipCode.duration_days || 30;
+    const newExpiry = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
+    const newExpiryStr = newExpiry.toISOString();
+
+    // 3. Mark code as used
+    db.prepare(
+      `UPDATE vip_codes
+       SET is_used = 1, used_by_user_id = ?, used_by_username = ?, used_at = datetime('now')
+       WHERE id = ?`
+    ).run(userId, username, vipCode.id);
+
+    // 4. Update user's VIP status and expiration
+    db.prepare(
+      `UPDATE users
+       SET is_vip = 1, vip_expires_at = ?
+       WHERE id = ?`
+    ).run(newExpiryStr, userId);
+
+    return {
+      success: true,
+      message: `VIP subscription activated for ${durationDays} days!`,
+      vip_expires_at: newExpiryStr,
+      duration_days: durationDays,
+    };
+  });
+
+  return tx();
+}
+
 
 

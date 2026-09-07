@@ -22,6 +22,8 @@ export async function GET(request: Request) {
         email: user.email,
         avatar: user.avatar,
         is_vip: user.is_vip || 0,
+        vip_expires_at: user.vip_expires_at || null,
+        key_expires_at: user.key_expires_at || null,
       },
     });
   } catch (err: any) {
