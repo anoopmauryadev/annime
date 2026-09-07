@@ -31,6 +31,7 @@ export default function EpisodesPage() {
   const [newEpVideo, setNewEpVideo] = useState<File | null>(null);
   const [newEpStreamUrl, setNewEpStreamUrl] = useState('');
   const [addingEp, setAddingEp] = useState(false);
+  const [newEpProgress, setNewEpProgress] = useState<{ pct: number; text: string } | null>(null);
 
   // Expanded episode (for server/download management)
   const [expandedEp, setExpandedEp] = useState<number | null>(null);
@@ -118,6 +119,8 @@ export default function EpisodesPage() {
       return;
     }
     setAddingEp(true);
+    setNewEpProgress({ pct: 0, text: '0 MB' });
+
     const fd = new FormData();
     fd.append('anime_id', animeId);
     fd.append('season_id', String(selectedSeason));
@@ -127,19 +130,48 @@ export default function EpisodesPage() {
     if (newEpVideo) fd.append('video', newEpVideo);
     if (newEpStreamUrl) fd.append('stream_url', newEpStreamUrl);
 
-    try {
-      await adminFetch('/api/admin/episodes', { method: 'POST', body: fd });
-      setNewEpTitle('');
-      setNewEpThumb(null);
-      setNewEpVideo(null);
-      setNewEpStreamUrl('');
-      setNewEpNum(newEpNum + 1);
-      await fetchEpisodes();
-    } catch {
-      alert('Failed to add episode');
-    } finally {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/admin/episodes');
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') : '';
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) {
+        const pct = Math.round((ev.loaded / ev.total) * 100);
+        const loadedMb = (ev.loaded / 1024 / 1024).toFixed(1);
+        const totalMb = (ev.total / 1024 / 1024).toFixed(1);
+        setNewEpProgress({ pct, text: `${loadedMb} / ${totalMb} MB` });
+      }
+    };
+
+    xhr.onload = async () => {
       setAddingEp(false);
-    }
+      setNewEpProgress(null);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        setNewEpTitle('');
+        setNewEpThumb(null);
+        setNewEpVideo(null);
+        setNewEpStreamUrl('');
+        setNewEpNum(newEpNum + 1);
+        await fetchEpisodes();
+      } else {
+        try {
+          const err = JSON.parse(xhr.responseText);
+          alert('Failed to add episode: ' + (err.error || 'Server error'));
+        } catch {
+          alert('Failed to add episode');
+        }
+      }
+    };
+
+    xhr.onerror = () => {
+      setAddingEp(false);
+      setNewEpProgress(null);
+      alert('Upload failed. Please check network connection and file size.');
+    };
+
+    xhr.send(fd);
   };
 
   const deleteEpisode = async (eid: number) => {
@@ -428,12 +460,33 @@ export default function EpisodesPage() {
                 />
               </div>
 
+              {newEpProgress && (
+                <div className="p-4 bg-violet-600/20 border border-violet-500/40 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs text-violet-300">
+                    <span className="flex items-center gap-2 font-medium">
+                      <Loader2 className="animate-spin" size={14} />
+                      {newEpProgress.pct < 100 ? 'Uploading Episode File...' : 'Server processing...'}
+                    </span>
+                    <span className="font-bold">{newEpProgress.pct}%</span>
+                  </div>
+                  <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-violet-600 to-fuchsia-500 rounded-full transition-all duration-300 ease-out"
+                      style={{ width: `${newEpProgress.pct}%` }}
+                    />
+                  </div>
+                  <div className="text-right text-xs text-slate-400">
+                    {newEpProgress.text}
+                  </div>
+                </div>
+              )}
+
               <button 
                 onClick={addEpisode} 
                 disabled={addingEp} 
                 className="w-full py-2.5 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-lg text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                {addingEp ? <><Loader2 className="animate-spin" size={16} /> Uploading & Adding Episode...</> : 'Save & Add Episode'}
+                {addingEp ? <><Loader2 className="animate-spin" size={16} /> Uploading ({newEpProgress ? `${newEpProgress.pct}%` : 'Please wait'})...</> : 'Save & Add Episode'}
               </button>
             </div>
           )}

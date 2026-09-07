@@ -13,6 +13,7 @@ export default function EditAnimePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ pct: number; text: string } | null>(null);
 
   const [formData, setFormData] = useState({
     title: '', type: 'series', synopsis: '', year: 2024, rating: '', status: 'ongoing', quality: 'HD',
@@ -62,6 +63,7 @@ export default function EditAnimePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setUploadProgress({ pct: 0, text: '0 MB' });
 
     const data = new FormData();
     Object.entries(formData).forEach(([k, v]) => data.append(k, String(v)));
@@ -71,20 +73,44 @@ export default function EditAnimePage() {
     if (backdrop) data.append('backdrop', backdrop);
     if (thumbnail) data.append('thumbnail', thumbnail);
 
-    try {
-      const res = await adminFetch(`/api/admin/anime/${id}`, { method: 'PUT', body: data });
-      if (res.ok) {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', `/api/admin/anime/${id}`);
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') : '';
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) {
+        const pct = Math.round((ev.loaded / ev.total) * 100);
+        const loadedMb = (ev.loaded / 1024 / 1024).toFixed(1);
+        const totalMb = (ev.total / 1024 / 1024).toFixed(1);
+        setUploadProgress({ pct, text: `${loadedMb} / ${totalMb} MB` });
+      }
+    };
+
+    xhr.onload = () => {
+      setSaving(false);
+      setUploadProgress(null);
+      if (xhr.status >= 200 && xhr.status < 300) {
         alert('Anime updated successfully!');
         router.push('/admin/anime');
       } else {
-        const error = await res.json();
-        alert('Error: ' + (error.error || 'Update failed'));
+        try {
+          const error = JSON.parse(xhr.responseText);
+          alert('Error: ' + (error.error || 'Update failed'));
+        } catch {
+          alert('Update failed');
+        }
       }
-    } catch {
-      alert('Update failed');
-    } finally {
+    };
+
+    xhr.onerror = () => {
       setSaving(false);
-    }
+      setUploadProgress(null);
+      alert('Update failed');
+    };
+
+    xhr.send(data);
   };
 
   const FileUpload = ({ label, file, setFile, currentUrl }: { label: string; file: File | null; setFile: (f: File | null) => void; currentUrl: string }) => (
@@ -218,6 +244,27 @@ export default function EditAnimePage() {
             </button>
           </div>
         </div>
+
+        {uploadProgress && (
+          <div className="p-4 bg-violet-600/20 border border-violet-500/40 rounded-xl space-y-3">
+            <div className="flex items-center gap-2 text-violet-300 text-sm">
+              <div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin"></div>
+              Uploading...
+            </div>
+            <div className="space-y-1.5">
+              <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-violet-600 to-fuchsia-500 rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${uploadProgress.pct}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-xs text-slate-400">
+                <span>{uploadProgress.text}</span>
+                <span className="font-bold text-violet-300">{uploadProgress.pct}%</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="pt-4 border-t border-slate-800">
           <button type="submit" disabled={saving} className="w-full md:w-auto px-8 py-3 bg-violet-600 hover:bg-violet-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50">

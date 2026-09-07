@@ -11,6 +11,7 @@ export default function NewAnimePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
+  const [uploadProgress, setUploadProgress] = useState<{ pct: number; text: string } | null>(null);
   
   const [formData, setFormData] = useState({
     title: '', type: 'series', synopsis: '', year: 2024, rating: '', status: 'ongoing', quality: 'HD',
@@ -34,7 +35,8 @@ export default function NewAnimePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setUploadStatus(videoFile ? 'Uploading anime video and posters (please wait)...' : 'Saving anime...');
+    setUploadStatus(videoFile ? 'Uploading anime video and posters...' : 'Saving anime...');
+    setUploadProgress({ pct: 0, text: '0 MB' });
     
     const data = new FormData();
     Object.entries(formData).forEach(([k, v]) => data.append(k, String(v)));
@@ -45,21 +47,47 @@ export default function NewAnimePage() {
     if (thumbnail) data.append('thumbnail', thumbnail);
     if (videoFile) data.append('video', videoFile);
 
-    try {
-      const res = await adminFetch('/api/admin/anime', { method: 'POST', body: data });
-      if (res.ok) {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/admin/anime');
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') : '';
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) {
+        const pct = Math.round((ev.loaded / ev.total) * 100);
+        const loadedMb = (ev.loaded / 1024 / 1024).toFixed(1);
+        const totalMb = (ev.total / 1024 / 1024).toFixed(1);
+        setUploadProgress({ pct, text: `${loadedMb} / ${totalMb} MB` });
+        setUploadStatus(pct < 100 ? 'Uploading...' : 'Processing on server...');
+      }
+    };
+
+    xhr.onload = () => {
+      setLoading(false);
+      setUploadProgress(null);
+      setUploadStatus('');
+      if (xhr.status >= 200 && xhr.status < 300) {
         alert('Anime & files uploaded successfully!');
         router.push('/admin/anime');
       } else {
-        const error = await res.json();
-        alert('Error: ' + (error.error || 'Failed to create anime'));
+        try {
+          const error = JSON.parse(xhr.responseText);
+          alert('Error: ' + (error.error || 'Failed to create anime'));
+        } catch {
+          alert('Upload failed with status ' + xhr.status);
+        }
       }
-    } catch {
-      alert('Upload failed. Please check network connection and file size.');
-    } finally {
+    };
+
+    xhr.onerror = () => {
       setLoading(false);
+      setUploadProgress(null);
       setUploadStatus('');
-    }
+      alert('Upload failed. Please check network connection and file size.');
+    };
+
+    xhr.send(data);
   };
 
   const FileUpload = ({ label, file, setFile }: { label: string, file: File | null, setFile: (f: File | null) => void }) => (
@@ -305,10 +333,26 @@ export default function NewAnimePage() {
           </div>
         </div>
 
-        {uploadStatus && (
-          <div className="p-4 bg-violet-600/20 border border-violet-500/40 rounded-xl text-violet-300 text-sm flex items-center gap-2">
-            <div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin"></div>
-            {uploadStatus}
+        {(uploadStatus || uploadProgress) && (
+          <div className="p-4 bg-violet-600/20 border border-violet-500/40 rounded-xl space-y-3">
+            <div className="flex items-center gap-2 text-violet-300 text-sm">
+              <div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin"></div>
+              {uploadStatus}
+            </div>
+            {uploadProgress && (
+              <div className="space-y-1.5">
+                <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-violet-600 to-fuchsia-500 rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${uploadProgress.pct}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs text-slate-400">
+                  <span>{uploadProgress.text}</span>
+                  <span className="font-bold text-violet-300">{uploadProgress.pct}%</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
