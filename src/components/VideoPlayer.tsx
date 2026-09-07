@@ -424,9 +424,12 @@ export default function VideoPlayer({ servers, animeId, episodeId }: VideoPlayer
   const redirectParam = encodeURIComponent(pathname || "/");
 
   return (
-    <div className="w-full flex flex-col rounded-xl overflow-hidden bg-[#141519] shadow-2xl relative">
+    <div className="w-full flex flex-col rounded-xl overflow-hidden bg-[#141519] shadow-2xl relative select-none">
       {/* Video Display Area */}
-      <div className="aspect-video w-full bg-black relative overflow-hidden group">
+      <div 
+        className="aspect-video w-full bg-black relative overflow-hidden group select-none"
+        onContextMenu={(e) => e.preventDefault()}
+      >
         {isLoading || (user && keyAccess.isLoading) ? (
           /* Checking Authentication / Pass State */
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#0a0a0f]">
@@ -598,7 +601,8 @@ export default function VideoPlayer({ servers, animeId, episodeId }: VideoPlayer
               autoPlay
               playsInline
               preload="metadata"
-              className="absolute inset-0 w-full h-full outline-none"
+              onContextMenu={(e) => e.preventDefault()}
+              className="absolute inset-0 w-full h-full outline-none select-none"
               controlsList="nodownload"
               onTimeUpdate={(e) => {
                 const now = e.currentTarget.currentTime;
