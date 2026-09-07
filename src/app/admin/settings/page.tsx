@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Lock, Eye, EyeOff, CheckCircle2, AlertTriangle, ShieldAlert, Power } from 'lucide-react';
+import { Lock, Eye, EyeOff, CheckCircle2, AlertTriangle, ShieldAlert, Power, Upload, Film } from 'lucide-react';
 import { adminFetch } from '@/lib/adminApi';
 
 export default function AdminSettingsPage() {
@@ -19,6 +19,11 @@ export default function AdminSettingsPage() {
   const [maintenanceLoading, setMaintenanceLoading] = useState(false);
   const [maintenanceSaved, setMaintenanceSaved] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [introEnabled, setIntroEnabled] = useState(true);
+  const [introDownloadEnabled, setIntroDownloadEnabled] = useState(false);
+  const [introUrl, setIntroUrl] = useState('/brand/anime-zone-intro-4k.mp4');
+  const [introSaving, setIntroSaving] = useState(false);
+  const [introMessage, setIntroMessage] = useState('');
 
   // Load current settings on mount
   useEffect(() => {
@@ -28,12 +33,42 @@ export default function AdminSettingsPage() {
         const data = await res.json();
         if (data.maintenance_mode === '1') setMaintenanceEnabled(true);
         if (data.maintenance_message) setMaintenanceMessage(data.maintenance_message);
+        setIntroEnabled(data.video_intro_enabled !== '0');
+        setIntroDownloadEnabled(data.video_intro_download_enabled === '1');
+        if (data.video_intro_url) setIntroUrl(data.video_intro_url);
         setSettingsLoaded(true);
       } catch {
         setSettingsLoaded(true);
       }
     })();
   }, []);
+
+  const saveIntroSettings = async (patch: Record<string, string>) => {
+    setIntroSaving(true); setIntroMessage('');
+    try {
+      const res = await adminFetch('/api/admin/brand-intro', { method: 'POST', body: (() => { const f = new FormData(); Object.entries(patch).forEach(([k, v]) => f.append(k, v)); return f; })() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not save intro settings');
+      setIntroEnabled(data.settings.video_intro_enabled !== '0');
+      setIntroDownloadEnabled(data.settings.video_intro_download_enabled === '1');
+      setIntroMessage('Intro settings saved.');
+    } catch (error) { setIntroMessage(error instanceof Error ? error.message : 'Could not save intro settings'); }
+    finally { setIntroSaving(false); }
+  };
+
+  const handleIntroUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]; if (!file) return;
+    const form = new FormData(); form.append('file', file);
+    setIntroSaving(true); setIntroMessage('Uploading intro…');
+    try {
+      const res = await adminFetch('/api/admin/brand-intro', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      if (data.video_intro_url) setIntroUrl(data.video_intro_url);
+      setIntroMessage(data.settings.video_intro_enabled === '0' ? 'Custom intro uploaded. Turn on Website intro animation to play it before episodes.' : 'Custom intro uploaded. It will play before the next episode you start.');
+    } catch (error) { setIntroMessage(error instanceof Error ? error.message : 'Upload failed'); }
+    finally { setIntroSaving(false); event.target.value = ''; }
+  };
 
   // Toggle maintenance mode
   const handleMaintenanceToggle = async () => {
@@ -203,6 +238,20 @@ export default function AdminSettingsPage() {
         </div>
       </div>
 
+      <div className="bg-[#1a1a2e] rounded-2xl border border-orange-500/20 overflow-hidden">
+        <div className="p-6 border-b border-slate-800 flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-orange-500/10 text-orange-400"><Film size={20} /></div>
+          <div><h2 className="text-lg font-bold text-white">Video Intro</h2><p className="text-xs text-slate-400">Play before every unlocked episode</p></div>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="flex items-center justify-between gap-4"><div><p className="text-sm font-medium text-white">Website intro animation</p><p className="text-xs text-slate-400">Login and key/VIP checks still happen first.</p></div><button role="switch" aria-label="Website intro animation" aria-checked={introEnabled} disabled={introSaving || !settingsLoaded} onClick={() => saveIntroSettings({ enabled: introEnabled ? '0' : '1' })} className={`relative inline-flex h-8 w-[60px] items-center rounded-full ${introEnabled ? 'bg-orange-500' : 'bg-slate-700'}`}><span className={`inline-block h-6 w-6 rounded-full bg-white transition-transform ${introEnabled ? 'translate-x-[34px]' : 'translate-x-[2px]'}`} /></button></div>
+          <div className="flex items-center justify-between gap-4"><div><p className="text-sm font-medium text-white">Add intro to downloads</p><p className="text-xs text-slate-400">Only local MP4/WebM downloads can be joined on the VPS.</p></div><button role="switch" aria-label="Add intro to downloads" aria-checked={introDownloadEnabled} disabled={introSaving || !settingsLoaded} onClick={() => saveIntroSettings({ downloadEnabled: introDownloadEnabled ? '0' : '1' })} className={`relative inline-flex h-8 w-[60px] items-center rounded-full ${introDownloadEnabled ? 'bg-emerald-500' : 'bg-slate-700'}`}><span className={`inline-block h-6 w-6 rounded-full bg-white transition-transform ${introDownloadEnabled ? 'translate-x-[34px]' : 'translate-x-[2px]'}`} /></button></div>
+          <div className="rounded-xl border border-slate-800 bg-[#0f0f1a] p-4"><p className="text-xs text-slate-400 mb-2">Current intro file</p><p className="text-xs font-mono text-orange-300 break-all mb-3">{introUrl}</p><label className="inline-flex items-center gap-2 cursor-pointer px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm text-white"><Upload size={15} /> Upload MP4/WebM<input type="file" accept="video/mp4,video/webm" onChange={handleIntroUpload} className="hidden" /></label></div>
+          {introMessage && <p className="text-xs text-emerald-400">{introMessage}</p>}
+          <video key={introUrl} src={introUrl} controls playsInline preload="metadata" aria-label="Selected intro preview" className="w-full aspect-video rounded-xl bg-black" />
+        </div>
+      </div>
+
       {/* ═══════════════ Change Password Card ═══════════════ */}
       <div className="bg-[#1a1a2e] rounded-2xl border border-slate-800 overflow-hidden">
         <div className="p-6 border-b border-slate-800 flex items-center gap-3">
@@ -296,4 +345,3 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-

@@ -256,6 +256,9 @@ function initializeDatabase(db: Database.Database) {
     shortener_api_token: "",
     key_duration_hours: "48",
     vip_store_url: "https://t.me/",
+    video_intro_enabled: "1",
+    video_intro_url: "/brand/anime-zone-intro-4k.mp4",
+    video_intro_download_enabled: "0",
   };
   const insertSetting = db.prepare(
     "INSERT OR IGNORE INTO site_settings (key, value) VALUES (?, ?)"
@@ -1065,19 +1068,19 @@ export function getUserCount(opts?: { search?: string; vipOnly?: boolean }): num
 
 export function updateUserVipStatus(userId: number, isVip: boolean): boolean {
   const db = getDb();
-  const res = db.prepare("UPDATE users SET is_vip = ? WHERE id = ?").run(isVip ? 1 : 0, userId);
+  const res = db.prepare("UPDATE users SET is_vip = ?, vip_expires_at = NULL WHERE id = ?").run(isVip ? 1 : 0, userId);
   return res.changes > 0;
 }
 
 export function setUserVipByEmail(email: string, isVip: boolean): boolean {
   const db = getDb();
-  const res = db.prepare("UPDATE users SET is_vip = ? WHERE LOWER(email) = ?").run(isVip ? 1 : 0, email.toLowerCase().trim());
+  const res = db.prepare("UPDATE users SET is_vip = ?, vip_expires_at = NULL WHERE LOWER(email) = ?").run(isVip ? 1 : 0, email.toLowerCase().trim());
   return res.changes > 0;
 }
 
 export function setUserVipByUsername(username: string, isVip: boolean): boolean {
   const db = getDb();
-  const res = db.prepare("UPDATE users SET is_vip = ? WHERE LOWER(username) = ?").run(isVip ? 1 : 0, username.toLowerCase().trim());
+  const res = db.prepare("UPDATE users SET is_vip = ?, vip_expires_at = NULL WHERE LOWER(username) = ?").run(isVip ? 1 : 0, username.toLowerCase().trim());
   return res.changes > 0;
 }
 
@@ -1976,6 +1979,4 @@ export function redeemVipCode(
 
   return tx();
 }
-
-
 

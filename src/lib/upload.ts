@@ -18,7 +18,7 @@ export async function saveUploadedFile(file: File, subfolder: string = ""): Prom
   const ext = path.extname(rawBasename).toLowerCase();
 
   // 2. Strict extension & type validation
-  const isVideo = subfolder === "videos" || ALLOWED_VIDEO_EXTS.has(ext);
+  const isVideo = subfolder === "videos" || subfolder === "brand" || ALLOWED_VIDEO_EXTS.has(ext);
   if (isVideo) {
     if (!ALLOWED_VIDEO_EXTS.has(ext)) {
       throw new Error(`Invalid video format (${ext}). Allowed formats: mp4, webm, mkv, mov, avi`);

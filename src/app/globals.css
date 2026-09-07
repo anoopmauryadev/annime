@@ -18,3 +18,43 @@ body {
 /* Hide scrollbar for carousel containers */
 .hide-scrollbar::-webkit-scrollbar { display: none; }
 .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Anime Zone original identity. Shared by navigation and the player ident. */
+.az-brand { display: inline-flex; align-items: center; gap: 9px; flex-shrink: 0; }
+.az-mark { width: 42px; height: 42px; flex-shrink: 0; overflow: visible; }
+.az-wordmark { display: flex; flex-direction: column; text-align: left; }
+.az-language { color: #a3a3ad; font-size: 8px; font-weight: 700; line-height: 1.4; letter-spacing: .38em; text-transform: uppercase; }
+.az-name { color: #fff4e8; font-size: 19px; font-weight: 900; line-height: 1.1; letter-spacing: -.055em; white-space: nowrap; }
+.az-name > span { color: #ff640a; margin-left: .16em; }
+.az-intro { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; isolation: isolate; background: #050507; container-type: inline-size; }
+.az-intro-halo { position: absolute; z-index: -1; width: 75%; height: 100%; border-radius: 50%; background: radial-gradient(ellipse, #ff640a1c, #ff640a05 40%, transparent 67%); }
+.az-intro-lockup { display: flex; flex-direction: column; align-items: center; }
+.az-brand-cinema { flex-direction: column; gap: clamp(6px, 2cqw, 20px); }
+.az-brand-cinema .az-mark { width: clamp(58px, 15cqw, 156px); height: clamp(58px, 15cqw, 156px); filter: drop-shadow(0 0 24px #ff640a20); }
+.az-brand-cinema .az-wordmark { align-items: center; gap: 7px; }
+.az-brand-cinema .az-language { font-size: clamp(8px, 1.1cqw, 12px); letter-spacing: .65em; padding-left: .65em; color: #c2b9b2; }
+.az-brand-cinema .az-name { font-size: clamp(23px, 4.6cqw, 48px); letter-spacing: -.04em; }
+.az-intro-tagline { margin-top: clamp(8px, 1.8cqw, 20px); color: #aaa0a0; font-size: clamp(6px, .85cqw, 10px); font-weight: 500; letter-spacing: .3em; }
+.az-intro-play { display: inline-flex; align-items: center; gap: 10px; margin-top: clamp(12px, 3cqw, 32px); border: 1px solid #ff640a80; border-radius: 999px; padding: 10px 23px; background: #ff640a; color: #0a0807; font-size: clamp(11px, 1.4cqw, 14px); font-weight: 800; cursor: pointer; transition: background .2s, box-shadow .2s; }
+.az-intro-play:hover { background: #ff8b40; box-shadow: 0 0 28px #ff640a30; }
+.az-intro-play:focus-visible { outline: 2px solid white; outline-offset: 5px; }
+.az-intro-caption { pointer-events: none; position: absolute; bottom: 5%; color: #827b78; font-size: clamp(5px, .75cqw, 9px); letter-spacing: .3em; }
+.az-intro-streak { position: absolute; top: 50%; left: -40%; width: 38%; height: 1px; background: linear-gradient(90deg, transparent, #ff640a, #ffe4c5); opacity: 0; transform: rotate(-28deg); pointer-events: none; }
+.az-intro-playing { animation: az-stage-out 2.8s linear both; }
+.az-intro-playing .az-mark-a { transform-origin: center; animation: az-ribbon-a 2.8s cubic-bezier(.16, 1, .3, 1) both; }
+.az-intro-playing .az-mark-z { transform-origin: center; animation: az-ribbon-z 2.8s cubic-bezier(.16, 1, .3, 1) both; }
+.az-intro-playing .az-mark-play { animation: az-type-in .5s .65s ease both; }
+.az-intro-playing .az-wordmark { animation: az-type-in .7s .65s ease both; }
+.az-intro-playing .az-intro-tagline { animation: az-type-in .6s 1.05s ease both; }
+.az-intro-playing .az-intro-halo { animation: az-halo 2.8s ease both; }
+.az-intro-playing .az-intro-streak { animation: az-streak .7s .15s ease-out both; }
+@keyframes az-ribbon-a { 0% { opacity: 0; transform: translate(-70px, 90px); } 30%, 82% { opacity: 1; transform: translate(0, 0); } 100% { opacity: 0; transform: scale(1.12); } }
+@keyframes az-ribbon-z { 0% { opacity: 0; transform: translate(70px, -90px); } 30%, 82% { opacity: 1; transform: translate(0, 0); } 100% { opacity: 0; transform: scale(1.12); } }
+@keyframes az-type-in { from { opacity: 0; transform: translateY(9px); filter: blur(5px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
+@keyframes az-halo { 0% { opacity: 0; transform: scale(.4); } 45%, 75% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0; transform: scale(1.3); } }
+@keyframes az-streak { 0% { opacity: 0; transform: translateX(0) rotate(-28deg); } 25% { opacity: .8; } 100% { opacity: 0; transform: translateX(400%) rotate(-28deg); } }
+@keyframes az-stage-out { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
+@container (max-width: 480px) { .az-intro-idle .az-brand-cinema { flex-direction: row; gap: 12px; } .az-intro-idle .az-brand-cinema .az-wordmark { align-items: flex-start; } .az-intro-idle .az-brand-cinema .az-language { padding-left: 0; } }
+@media (prefers-reduced-motion: reduce) { .az-intro-playing, .az-intro-playing * { animation: none !important; } .az-intro-streak { display: none; } }
+
+@container (max-width: 480px) { .az-intro-idle .az-intro-caption { display: none; } }

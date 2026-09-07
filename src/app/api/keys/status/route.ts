@@ -7,9 +7,10 @@ export async function GET(request: NextRequest) {
   try {
     const settings = getSiteSettings();
     const isSystemEnabled = settings.key_system_enabled !== "0";
+    const user = getUserFromRequest(request);
 
     // If key system is turned off globally, all users have access
-    if (!isSystemEnabled) {
+    if (!isSystemEnabled && !user) {
       return NextResponse.json({
         is_logged_in: false,
         active: true,
@@ -20,7 +21,6 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const user = getUserFromRequest(request);
     if (!user) {
       return NextResponse.json({
         is_logged_in: false,

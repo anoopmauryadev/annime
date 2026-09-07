@@ -49,6 +49,9 @@ data/*.db-wal
 # uploaded videos & HLS (too large for git)
 public/uploads/videos/
 public/uploads/hls/
+public/uploads/brand/
+public/uploads/downloads/
+data/intro-downloads/
 public/uploads/*.png
 public/uploads/*.jpg
 public/uploads/*.webp

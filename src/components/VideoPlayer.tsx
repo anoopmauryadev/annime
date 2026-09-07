@@ -20,6 +20,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import Hls from "hls.js";
+import BrandIntro, { BRAND_INTRO_DURATION } from "./BrandIntro";
 import { useAuth } from "@/context/AuthContext";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -51,7 +52,13 @@ function formatTime(secs: number): string {
   return `${m}:${sStr}`;
 }
 
-export default function VideoPlayer({ servers, animeId, episodeId }: VideoPlayerProps) {
+export default function VideoPlayer(props: VideoPlayerProps) {
+  // A new episode gets its own intro and playback history state, even on client navigation.
+  const identity = `${props.animeId ?? ""}:${props.episodeId ?? props.servers?.map((server) => server.stream_url).join("|")}`;
+  return <EpisodeVideoPlayer key={identity} {...props} />;
+}
+
+function EpisodeVideoPlayer({ servers, animeId, episodeId }: VideoPlayerProps) {
   const { user, token, isLoading } = useAuth();
   const pathname = usePathname();
 
@@ -65,6 +72,11 @@ export default function VideoPlayer({ servers, animeId, episodeId }: VideoPlayer
   const [showResumeBanner, setShowResumeBanner] = useState(false);
   const [playbackToast, setPlaybackToast] = useState<string | null>(null);
 
+  const [introPhase, setIntroPhase] = useState<"idle" | "playing" | "complete">("idle");
+  const [introMediaUrl, setIntroMediaUrl] = useState<string | undefined>();
+  const [introStarting, setIntroStarting] = useState(false);
+  const introPassed = useRef(false);
+  const [needsPlay, setNeedsPlay] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const lastSavedTime = useRef<number>(0);
@@ -290,10 +302,37 @@ export default function VideoPlayer({ servers, animeId, episodeId }: VideoPlayer
     }).catch(() => {});
   };
 
+  const requestPlayback = async () => {
+    if (!user || keyAccess.isLoading || (!keyAccess.active && !keyAccess.is_vip) || introStarting || introPhase === "playing") return;
+    if (!introPassed.current) {
+      // Read again at Play so an intro uploaded in another admin tab takes effect.
+      setIntroStarting(true);
+      try {
+        const res = await fetch("/api/admin/brand-intro", { cache: "no-store" });
+        if (!res.ok) throw new Error("Intro settings unavailable");
+        const data = await res.json();
+        setIntroMediaUrl(data.url && data.url !== "/brand/anime-zone-intro-4k.mp4" ? data.url : undefined);
+        if (data.enabled !== false) {
+          setIntroPhase("playing");
+          return;
+        }
+        introPassed.current = true;
+        setIntroPhase("complete");
+      } catch {
+        setPlaybackToast("Could not load player settings. Please try Play again.");
+        return;
+      } finally {
+        setIntroStarting(false);
+      }
+    }
+    setNeedsPlay(false);
+    videoRef.current?.play().catch(() => setNeedsPlay(true));
+  };
+
   const handleResume = () => {
     if (videoRef.current && savedProgress) {
       videoRef.current.currentTime = savedProgress.time;
-      videoRef.current.play().catch(() => {});
+      requestPlayback();
       setPlaybackToast(`Resumed from ${formatTime(savedProgress.time)}`);
       setShowResumeBanner(false);
       setTimeout(() => setPlaybackToast(null), 3000);
@@ -303,7 +342,7 @@ export default function VideoPlayer({ servers, animeId, episodeId }: VideoPlayer
   const handleStartOver = () => {
     if (videoRef.current) {
       videoRef.current.currentTime = 0;
-      videoRef.current.play().catch(() => {});
+      requestPlayback();
       setPlaybackToast("Restarted from beginning (0:00)");
       setShowResumeBanner(false);
       setTimeout(() => setPlaybackToast(null), 3000);
@@ -348,6 +387,20 @@ export default function VideoPlayer({ servers, animeId, episodeId }: VideoPlayer
     !isHls &&
     (server?.server_type === "embed" ||
       (!isDirectVideo && (embedSrc.startsWith("http://") || embedSrc.startsWith("https://"))));
+
+  // Keep the underlying video paused and embeds unmounted until the ident ends.
+  // A timer also completes the intro when reduced-motion disables CSS animations.
+  useEffect(() => {
+    if (introPhase !== "playing" || !user || (!keyAccess.active && !keyAccess.is_vip) || introMediaUrl) return;
+    const timer = window.setTimeout(() => {
+      introPassed.current = true;
+      setIntroPhase("complete");
+      if (!isEmbed) {
+        videoRef.current?.play().catch(() => setNeedsPlay(true));
+      }
+    }, BRAND_INTRO_DURATION);
+    return () => window.clearTimeout(timer);
+  }, [introPhase, user, keyAccess.active, keyAccess.is_vip, isEmbed, embedSrc, introMediaUrl]);
 
   // Initialize HLS when stream is .m3u8 and user has active pass
   useEffect(() => {
@@ -603,21 +656,28 @@ export default function VideoPlayer({ servers, animeId, episodeId }: VideoPlayer
           </div>
         ) : isEmbed ? (
           /* User is logged in: Embed Iframe */
-          <iframe
+          introPhase === "complete" ? <iframe
             key={embedSrc}
             src={embedSrc}
             allowFullScreen
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             referrerPolicy="origin"
             className="absolute inset-0 w-full h-full border-0"
-          ></iframe>
+          ></iframe> : null
         ) : (
           /* User is logged in: Native / HLS HTML5 Video */
           <>
             <video
               ref={videoRef}
-              controls
-              autoPlay
+              controls={introPhase === "complete"}
+              onPlay={(event) => {
+                if (!introPassed.current) {
+                  event.currentTarget.pause();
+                  setIntroPhase("playing");
+                } else {
+                  setNeedsPlay(false);
+                }
+              }}
               playsInline
               preload="metadata"
               onContextMenu={(e) => e.preventDefault()}
@@ -638,7 +698,7 @@ export default function VideoPlayer({ servers, animeId, episodeId }: VideoPlayer
             </video>
 
             {/* Resume Playback Prompt Banner (Overlay inside player) */}
-            {showResumeBanner && savedProgress && (
+            {introPhase !== "playing" && showResumeBanner && savedProgress && (
               <div className="absolute top-4 left-4 right-4 sm:left-auto sm:right-4 max-w-md bg-[#18191f]/95 border border-[#ff640a]/40 backdrop-blur-md p-3.5 rounded-xl shadow-2xl z-30 flex flex-col gap-2.5 animate-in fade-in slide-in-from-top-3 duration-200">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -683,13 +743,22 @@ export default function VideoPlayer({ servers, animeId, episodeId }: VideoPlayer
             )}
 
             {/* Playback Toast Notification */}
-            {playbackToast && (
+            {introPhase !== "playing" && playbackToast && (
               <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/80 text-white text-xs font-bold px-4 py-2 rounded-full border border-white/10 shadow-2xl backdrop-blur-md z-30 flex items-center gap-2 animate-in fade-in zoom-in-95">
                 <Sparkles size={13} className="text-[#ff640a]" />
                 <span>{playbackToast}</span>
               </div>
             )}
           </>
+        )}
+        {!isLoading && user && !keyAccess.isLoading && (keyAccess.active || keyAccess.is_vip) && introPhase !== "complete" && (
+          <BrandIntro playing={introPhase === "playing"} mediaUrl={introMediaUrl} onPlay={requestPlayback} onComplete={() => { introPassed.current = true; setIntroPhase("complete"); videoRef.current?.play().catch(() => setNeedsPlay(true)); }} />
+        )}
+        {introStarting && <div role="status" className="absolute inset-0 z-40 flex items-center justify-center bg-black/90 text-white text-sm">Loading player…</div>}
+        {introPhase === "complete" && needsPlay && !isEmbed && user && (keyAccess.active || keyAccess.is_vip) && (
+          <button type="button" onClick={requestPlayback} className="absolute inset-0 z-20 flex items-center justify-center gap-3 bg-black/70 text-white font-bold">
+            <Play size={28} fill="currentColor" /> Tap to play video
+          </button>
         )}
       </div>
 

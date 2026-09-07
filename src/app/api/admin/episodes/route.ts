@@ -1,4 +1,4 @@
-import { getEpisodesByAnime, getEpisodesBySeason, createEpisode, deleteEpisode, createServer } from "@/lib/db";
+import { getEpisodesByAnime, getEpisodesBySeason, createEpisode, deleteEpisode, createServer, createDownload } from "@/lib/db";
 import { saveUploadedFile } from "@/lib/upload";
 import { requireAdminAuth } from "@/lib/auth";
 import { NextResponse } from "next/server";
@@ -61,6 +61,9 @@ export async function POST(request: Request) {
         stream_url: videoUrl,
         server_order: 0,
       });
+
+      // Keep the original download available after the server switches to HLS.
+      createDownload({ episode_id: epId, quality: "Original", download_url: videoUrl });
 
       // Background multi-quality HLS transcoding
       const { startHlsTranscoding } = await import("@/lib/transcoder");

@@ -1,3 +1,4 @@
+import BrandLogo from "./BrandLogo";
 import Link from "next/link";
 import { Send, Shield } from "lucide-react";
 
@@ -23,8 +24,7 @@ export default function Footer() {
           {/* Brand Column */}
           <div className="md:col-span-2 space-y-3">
             <Link href="/" className="inline-flex items-center gap-1 group">
-              <span className="text-2xl font-black text-white">Anime</span>
-              <span className="text-2xl font-black text-[#ff640a]">Zone</span>
+              <BrandLogo />
             </Link>
             
             <p className="text-xs text-gray-400 leading-relaxed max-w-md">

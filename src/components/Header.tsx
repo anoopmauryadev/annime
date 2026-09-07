@@ -1,4 +1,6 @@
 "use client";
+
+import BrandLogo from "./BrandLogo";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { Search, Menu, X, Send, Shuffle, User, LogOut, Bookmark, Download, Crown, Key, Sparkles, Ticket } from "lucide-react";
@@ -94,12 +96,7 @@ export default function Header() {
           {/* Logo & Navigation */}
           <div className="flex items-center gap-8">
             <Link href="/" className="flex items-center gap-1 group select-none py-1">
-              <span className="text-2xl sm:text-3xl font-black tracking-tight text-white group-hover:opacity-90 transition-opacity">
-                Anime
-              </span>
-              <span className="text-2xl sm:text-3xl font-black tracking-tight text-[#ff640a] group-hover:brightness-110 transition-all">
-                Zone
-              </span>
+              <BrandLogo />
             </Link>
 
             {/* Desktop Navigation Links */}
@@ -304,8 +301,7 @@ export default function Header() {
             {/* Drawer Header */}
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-white/5">
               <div className="flex items-center gap-1">
-                <span className="font-black text-xl text-white">Anime</span>
-                <span className="font-black text-xl text-[#ff640a]">Zone</span>
+                <BrandLogo />
               </div>
               <button
                 onClick={() => setMobileMenu(false)}

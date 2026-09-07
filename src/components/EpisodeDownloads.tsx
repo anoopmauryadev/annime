@@ -3,8 +3,8 @@
 import { useAuth } from "@/context/AuthContext";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Download, Lock, ArrowRight, ShieldCheck, Loader2, Sparkles, CheckCircle2, Crown } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Download, Lock, ArrowRight, Loader2, Crown } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 
 interface DownloadLink {
   id: number;
@@ -15,7 +15,7 @@ interface DownloadLink {
 
 interface EpisodeDownloadsProps {
   downloads: DownloadLink[];
-  servers?: any[];
+  servers?: { stream_url: string; server_name: string; server_type?: string }[];
   episodeTitle?: string;
 }
 
@@ -27,32 +27,34 @@ export default function EpisodeDownloads({
   const { user, token, isLoading } = useAuth();
   const pathname = usePathname();
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
-  const [isVip, setIsVip] = useState(false);
-  const [checkingVip, setCheckingVip] = useState(false);
+  const [vipCheck, setVipCheck] = useState<{ id: number; vip: boolean } | null>(null);
+  const isVip = !!user && vipCheck?.id === user.id && vipCheck.vip;
+  const checkingVip = !!user && vipCheck?.id !== user.id;
+  const [downloadError, setDownloadError] = useState("");
+  const [downloadStatus, setDownloadStatus] = useState("");
+  const [readyHref, setReadyHref] = useState("");
+  const downloadRequest = useRef<AbortController | null>(null);
 
   // Check VIP status when user is logged in
   useEffect(() => {
-    if (!user || !token) {
-      setIsVip(false);
-      return;
-    }
-
-    if (user.is_vip !== undefined) {
-      setIsVip(user.is_vip === 1);
-      return;
-    }
-
-    setCheckingVip(true);
-    fetch("/api/auth/me", {
-      headers: { Authorization: `Bearer ${token}` },
+    if (!user?.id) return;
+    const id = user.id;
+    const controller = new AbortController();
+    const refresh = () => fetch("/api/keys/status", {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal: controller.signal, cache: "no-store",
     })
       .then((r) => r.json())
       .then((data) => {
-        setIsVip(data?.user?.is_vip === 1);
+        setVipCheck({ id, vip: data?.is_vip === true });
       })
-      .catch(() => setIsVip(false))
-      .finally(() => setCheckingVip(false));
-  }, [user, token]);
+      .catch(() => { if (!controller.signal.aborted) setVipCheck({ id, vip: false }); });
+    refresh();
+    window.addEventListener("focus", refresh);
+    return () => { controller.abort(); window.removeEventListener("focus", refresh); };
+  }, [user?.id, user?.is_vip, token]);
+
+  useEffect(() => () => downloadRequest.current?.abort(), []);
 
   // Only build effective downloads for VIP users
   const effectiveDownloads = isVip ? [...downloads] : [];
@@ -83,11 +85,44 @@ export default function EpisodeDownloads({
     return `${base}_${q}.${ext}`;
   };
 
-  const handleDownloadClick = (id: number) => {
-    setDownloadingId(id);
-    setTimeout(() => {
-      setDownloadingId(null);
-    }, 3000);
+  const downloadHref = (url: string) =>
+    url.startsWith("/uploads/") ? `/api/downloads/with-intro?url=${encodeURIComponent(url)}` : url;
+
+  const handleDownloadClick = async (event: React.MouseEvent<HTMLAnchorElement>, dl: DownloadLink) => {
+    if (!dl.download_url.startsWith("/uploads/")) return;
+    event.preventDefault();
+    downloadRequest.current?.abort();
+    const controller = new AbortController();
+    downloadRequest.current = controller;
+    setDownloadingId(dl.id); setDownloadError(""); setReadyHref("");
+    setDownloadStatus("Preparing your download…");
+    const href = downloadHref(dl.download_url);
+    let method = "POST";
+    try {
+      while (!controller.signal.aborted) {
+        const response = await fetch(method === "POST" ? href : `${href}&status=1`, {
+          method, headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: controller.signal, cache: "no-store",
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not prepare this download.");
+        if (data.status === "ready") {
+          // The final attachment streams through the browser, without loading a large Blob into memory.
+          setReadyHref(href); setDownloadStatus("Your file is ready. If the download does not start, use the link below.");
+          const link = document.createElement("a"); link.href = href; link.download = "";
+          document.body.append(link); link.click(); link.remove();
+          break;
+        }
+        setDownloadStatus(data.status === "busy" ? "Another video is being prepared. Your download will start when ready…" : "Adding the intro to your video. This may take a few minutes…");
+        method = data.status === "busy" || data.status === "pending" ? "POST" : "GET";
+        await new Promise<void>((resolve, reject) => {
+          const stop = () => { window.clearTimeout(timer); reject(new DOMException("Aborted", "AbortError")); };
+          const timer = window.setTimeout(() => { controller.signal.removeEventListener("abort", stop); resolve(); }, 2000);
+          controller.signal.addEventListener("abort", stop, { once: true });
+        });
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) { setDownloadStatus(""); setDownloadError(error instanceof Error ? error.message : "Download failed. Please try again."); }
+    } finally { if (!controller.signal.aborted) setDownloadingId(null); }
   };
 
   return (
@@ -167,15 +202,15 @@ export default function EpisodeDownloads({
               return (
                 <a
                   key={dl.id}
-                  href={dl.download_url}
+                  href={downloadHref(dl.download_url)}
                   download={cleanDownloadName(dl.quality, dl.download_url)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => handleDownloadClick(dl.id)}
+                  onClick={(event) => handleDownloadClick(event, dl)}
                   className="flex items-center gap-2.5 bg-[#1e1e24] hover:bg-emerald-600/20 border border-white/10 hover:border-emerald-500/50 text-white rounded-lg px-4 py-2.5 transition-all group shadow-md"
                 >
                   {isDownloading ? (
-                    <CheckCircle2 size={15} className="text-emerald-400 animate-bounce" />
+                    <Loader2 size={15} className="text-emerald-400 animate-spin" />
                   ) : (
                     <Download
                       size={15}
@@ -194,6 +229,9 @@ export default function EpisodeDownloads({
               );
             })}
           </div>
+          {downloadStatus && <p role="status" className="text-xs text-gray-300">{downloadStatus}</p>}
+          {downloadError && <p role="alert" className="text-xs text-rose-300">{downloadError}</p>}
+          {readyHref && <a href={readyHref} download className="inline-block text-sm text-emerald-400 underline">Download ready file</a>}
         </div>
       ) : (
         /* VIP user, but no downloads available for this episode */
