@@ -138,6 +138,15 @@ export function requireAdminAuth(request: Request): { authorized: boolean; error
     token = request.headers.get("x-admin-token") || "";
   }
 
+  // 3. Check admin cookie fallback
+  if (!token) {
+    const cookie = request.headers.get("cookie");
+    if (cookie) {
+      const match = cookie.match(/(?:^|;\s*)(?:admin_token|adminToken)=([^;]+)/);
+      if (match) token = decodeURIComponent(match[1]);
+    }
+  }
+
   const payload = verifyAdminToken(token);
   if (!payload) {
     return { authorized: false, error: "Unauthorized: Invalid or expired admin token" };

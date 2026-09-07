@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 // In-memory store for login attempt tracking (resets on server restart)
 const loginAttempts = new Map<string, { count: number; firstAttempt: number; lockedUntil: number }>();
 
-const MAX_ATTEMPTS = 5;          // Max failed attempts before lockout
+const MAX_ATTEMPTS = 10;         // Max failed attempts before lockout
 const WINDOW_MS = 15 * 60 * 1000; // 15 minute window
 const LOCKOUT_MS = 15 * 60 * 1000; // 15 minute lockout after max attempts
 
@@ -63,7 +63,14 @@ export async function POST(req: Request) {
       // Successful login — clear rate limit for this IP
       loginAttempts.delete(ip);
       const token = generateAdminToken(user);
-      return NextResponse.json({ success: true, token, username: user.username });
+      const response = NextResponse.json({ success: true, token, username: user.username });
+      response.cookies.set('admin_token', token, {
+        path: '/',
+        httpOnly: false,
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60,
+      });
+      return response;
     }
 
     // Failed login — track attempt

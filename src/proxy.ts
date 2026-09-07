@@ -1,121 +1,102 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import fs from 'fs';
+import path from 'path';
+import { verifyAdminToken } from '@/lib/auth';
 
-// ─── In-memory maintenance cache ──────────────────────────────────
-// We cache maintenance status to avoid DB reads on every single request.
-// The cache refreshes every 5 seconds so admin toggle takes effect quickly.
-let maintenanceCache: { enabled: boolean; message: string; lastChecked: number } = {
+// ─── Maintenance Mode State ────────────────────────────────────────
+// Reads from data/maintenance.json (or DB fallback) with 3s in-memory cache
+let maintenanceCache = {
   enabled: false,
-  message: '',
   lastChecked: 0,
 };
-const CACHE_TTL_MS = 5000; // 5 seconds
+const CACHE_TTL_MS = 3000; // 3 seconds
 
-async function checkMaintenanceMode(request: NextRequest): Promise<{ enabled: boolean; message: string }> {
+function isMaintenanceActive(): boolean {
   const now = Date.now();
   if (now - maintenanceCache.lastChecked < CACHE_TTL_MS) {
-    return { enabled: maintenanceCache.enabled, message: maintenanceCache.message };
+    return maintenanceCache.enabled;
   }
 
+  // 1. Try reading data/maintenance.json (fastest, no DB locks)
   try {
-    // Internal fetch to the maintenance status API
-    const baseUrl = request.nextUrl.origin;
-    const res = await fetch(`${baseUrl}/api/maintenance/status`, {
-      headers: { 'Cache-Control': 'no-cache' },
-    });
-    if (res.ok) {
-      const data = await res.json();
+    const filePath = path.join(process.cwd(), 'data', 'maintenance.json');
+    if (fs.existsSync(filePath)) {
+      const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
       maintenanceCache = {
-        enabled: data.maintenance === true,
-        message: data.message || '',
+        enabled: Boolean(data.enabled),
         lastChecked: now,
       };
+      return maintenanceCache.enabled;
     }
   } catch {
-    // On error, use cached value (fail-open so site doesn't break)
+    // ignore read error
   }
 
-  return { enabled: maintenanceCache.enabled, message: maintenanceCache.message };
+  // 2. Fallback to SQLite DB if JSON file doesn't exist
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getSiteSettings } = require('@/lib/db');
+    const settings = getSiteSettings();
+    maintenanceCache = {
+      enabled: settings?.maintenance_mode === '1',
+      lastChecked: now,
+    };
+  } catch {
+    maintenanceCache.lastChecked = now;
+  }
+
+  return maintenanceCache.enabled;
 }
 
-/**
- * Server-side proxy for:
- * 1. Maintenance mode — redirect user pages to /maintenance
- * 2. Admin page protection — redirect unauthenticated to /admin/login
- * 3. Rate limiting headers — pass client IP to login route
- */
-export async function proxy(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // ─── Maintenance Mode ──────────────────────────────────────────
-  // Skip maintenance check for: admin pages, admin API, maintenance page itself,
-  // public APIs, static assets, and internal Next.js routes
-  const isExemptFromMaintenance =
+  // ─── 1. Never block Admin panel, APIs, static files, or internal Next.js assets ─
+  if (
     pathname.startsWith('/admin') ||
-    pathname.startsWith('/api/admin') ||
-    pathname.startsWith('/api/maintenance') ||
-    pathname === '/maintenance' ||
+    pathname.startsWith('/api') ||
     pathname.startsWith('/_next') ||
-    pathname.startsWith('/api/') ||
-    pathname.includes('.');
-
-  if (!isExemptFromMaintenance) {
-    const { enabled } = await checkMaintenanceMode(request);
-    if (enabled) {
-      // Redirect all user-facing pages to the maintenance page
-      const maintenanceUrl = new URL('/maintenance', request.url);
-      return NextResponse.redirect(maintenanceUrl);
-    }
+    pathname.includes('.')
+  ) {
+    return NextResponse.next();
   }
 
-  // If user is on /maintenance but maintenance is OFF, redirect to home
+  const maintenanceOn = isMaintenanceActive();
+
+  // ─── 2. If visitor is already on /maintenance ──────────────────────
   if (pathname === '/maintenance') {
-    const { enabled } = await checkMaintenanceMode(request);
-    if (!enabled) {
+    // If maintenance was turned OFF, send them back to home
+    if (!maintenanceOn) {
       return NextResponse.redirect(new URL('/', request.url));
     }
+    return NextResponse.next();
   }
 
-  // ─── Admin Page Protection ─────────────────────────────────────
-  // Protect all /admin/* page routes EXCEPT /admin/login itself
-  if (pathname.startsWith('/admin') && !pathname.startsWith('/admin/login')) {
-    const adminToken = request.cookies.get('adminToken')?.value
-      || request.headers.get('x-admin-token')
-      || extractBearerToken(request.headers.get('authorization'));
+  // ─── 3. If visitor has valid admin token cookie, bypass maintenance ─
+  const adminCookie =
+    request.cookies.get('admin_token')?.value ||
+    request.cookies.get('adminToken')?.value;
 
-    if (!adminToken) {
-      const loginUrl = new URL('/admin/login', request.url);
-      loginUrl.searchParams.set('redirect', pathname);
-      return NextResponse.redirect(loginUrl);
+  if (adminCookie) {
+    const verified = verifyAdminToken(adminCookie);
+    if (verified) {
+      // Logged-in admin can browse the live site normally even during maintenance
+      return NextResponse.next();
     }
   }
 
-  // ─── Admin API Rate Limiting Headers ───────────────────────────
-  if (pathname === '/api/admin/login' && request.method === 'POST') {
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-      || request.headers.get('x-real-ip')
-      || 'unknown';
-
-    const requestHeaders = new Headers(request.headers);
-    requestHeaders.set('x-client-ip', ip);
-
-    return NextResponse.next({
-      request: { headers: requestHeaders },
-    });
+  // ─── 4. For regular users: redirect to /maintenance if enabled ─────
+  if (maintenanceOn) {
+    return NextResponse.redirect(new URL('/maintenance', request.url));
   }
 
   return NextResponse.next();
 }
 
-function extractBearerToken(authHeader: string | null): string | null {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-  return authHeader.substring(7) || null;
-}
-
 export const config = {
   matcher: [
-    // Match everything except static files and internal Next.js routes
-    '/((?!_next/static|_next/image|favicon.ico|uploads/).*)',
+    // Apply proxy only to page routes; exclude API routes and static assets
+    '/((?!api|_next/static|_next/image|favicon.ico|uploads/).*)',
   ],
 };
-

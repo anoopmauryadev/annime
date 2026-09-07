@@ -19,6 +19,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   }, [pathname, router]);
 
+  const handleLogout = () => {
+    localStorage.removeItem('adminToken');
+    document.cookie = 'admin_token=; path=/; max-age=0; SameSite=Lax';
+    router.push('/admin/login');
+  };
+
   if (!isAuthenticated && !pathname.includes('/admin/login')) return null;
 
   if (pathname.includes('/admin/login')) {
@@ -53,7 +59,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           ))}
         </nav>
         <div className="p-4 border-t border-slate-800">
-          <button onClick={() => { localStorage.removeItem('adminToken'); router.push('/admin/login'); }} className="flex items-center space-x-3 p-3 w-full rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-500 transition-colors">
+          <button onClick={handleLogout} className="flex items-center space-x-3 p-3 w-full rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-500 transition-colors">
             <LogOut size={20} />
             <span>Logout</span>
           </button>
@@ -80,7 +86,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   <span>{item.name}</span>
                 </Link>
               ))}
-              <button onClick={() => { localStorage.removeItem('adminToken'); router.push('/admin/login'); }} className="flex items-center space-x-3 p-3 w-full rounded-lg text-red-500">
+              <button onClick={handleLogout} className="flex items-center space-x-3 p-3 w-full rounded-lg text-red-500">
                 <LogOut size={20} />
                 <span>Logout</span>
               </button>
