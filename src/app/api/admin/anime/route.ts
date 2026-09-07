@@ -5,6 +5,7 @@ import { requireAdminAuth } from '@/lib/auth';
 import slugify from 'slugify';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 1800; // 30 minutes for slow mobile uploads
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);

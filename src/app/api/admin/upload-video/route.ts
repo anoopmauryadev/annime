@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import path from "path";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 1800; // 30 minutes for slow mobile uploads
 
 export async function POST(request: Request) {
   const auth = requireAdminAuth(request);

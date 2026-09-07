@@ -47,6 +47,19 @@ export default function NewAnimePage() {
     if (thumbnail) data.append('thumbnail', thumbnail);
     if (videoFile) data.append('video', videoFile);
 
+    let wakeLock: any = null;
+    if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+      try {
+        wakeLock = await (navigator as any).wakeLock.request('screen');
+      } catch {}
+    }
+    const releaseWakeLock = () => {
+      if (wakeLock) {
+        wakeLock.release().catch(() => {});
+        wakeLock = null;
+      }
+    };
+
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/admin/anime');
 
@@ -59,11 +72,12 @@ export default function NewAnimePage() {
         const loadedMb = (ev.loaded / 1024 / 1024).toFixed(1);
         const totalMb = (ev.total / 1024 / 1024).toFixed(1);
         setUploadProgress({ pct, text: `${loadedMb} / ${totalMb} MB` });
-        setUploadStatus(pct < 100 ? 'Uploading...' : 'Processing on server...');
+        setUploadStatus(pct < 100 ? 'Uploading...' : 'File uploaded! Processing on server, please wait...');
       }
     };
 
     xhr.onload = () => {
+      releaseWakeLock();
       setLoading(false);
       setUploadProgress(null);
       setUploadStatus('');
@@ -75,16 +89,17 @@ export default function NewAnimePage() {
           const error = JSON.parse(xhr.responseText);
           alert('Error: ' + (error.error || 'Failed to create anime'));
         } catch {
-          alert('Upload failed with status ' + xhr.status);
+          alert(`Upload failed (Status: ${xhr.status}). If using mobile, ensure screen stayed ON and Nginx timeout is configured.`);
         }
       }
     };
 
     xhr.onerror = () => {
+      releaseWakeLock();
       setLoading(false);
       setUploadProgress(null);
       setUploadStatus('');
-      alert('Upload failed. Please check network connection and file size.');
+      alert('Upload interrupted or connection dropped. Please keep screen ON and tab active while uploading.');
     };
 
     xhr.send(data);
@@ -350,6 +365,9 @@ export default function NewAnimePage() {
                 <div className="flex justify-between text-xs text-slate-400">
                   <span>{uploadProgress.text}</span>
                   <span className="font-bold text-violet-300">{uploadProgress.pct}%</span>
+                </div>
+                <div className="text-[11px] text-amber-400/90 flex items-center gap-1.5 pt-1">
+                  <span>📱</span> Phone se upload karte waqt: Screen on rakhein aur tab change na karein.
                 </div>
               </div>
             )}

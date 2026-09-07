@@ -130,6 +130,19 @@ export default function EpisodesPage() {
     if (newEpVideo) fd.append('video', newEpVideo);
     if (newEpStreamUrl) fd.append('stream_url', newEpStreamUrl);
 
+    let wakeLock: any = null;
+    if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+      try {
+        wakeLock = await (navigator as any).wakeLock.request('screen');
+      } catch {}
+    }
+    const releaseWakeLock = () => {
+      if (wakeLock) {
+        wakeLock.release().catch(() => {});
+        wakeLock = null;
+      }
+    };
+
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/admin/episodes');
 
@@ -146,6 +159,7 @@ export default function EpisodesPage() {
     };
 
     xhr.onload = async () => {
+      releaseWakeLock();
       setAddingEp(false);
       setNewEpProgress(null);
       if (xhr.status >= 200 && xhr.status < 300) {
@@ -160,15 +174,16 @@ export default function EpisodesPage() {
           const err = JSON.parse(xhr.responseText);
           alert('Failed to add episode: ' + (err.error || 'Server error'));
         } catch {
-          alert('Failed to add episode');
+          alert(`Upload failed (Status: ${xhr.status}). If uploading from phone, keep screen ON and verify Nginx timeout settings.`);
         }
       }
     };
 
     xhr.onerror = () => {
+      releaseWakeLock();
       setAddingEp(false);
       setNewEpProgress(null);
-      alert('Upload failed. Please check network connection and file size.');
+      alert('Upload interrupted or connection dropped. Please keep phone screen ON and active.');
     };
 
     xhr.send(fd);
@@ -245,6 +260,19 @@ export default function EpisodesPage() {
     fd.append('episode_id', String(expandedEp));
     fd.append('server_name', serverVideoName || 'Multi-Quality HD (2K/1080p/720p/360p)');
 
+    let wakeLock: any = null;
+    if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+      try {
+        wakeLock = await (navigator as any).wakeLock.request('screen');
+      } catch {}
+    }
+    const releaseWakeLock = () => {
+      if (wakeLock) {
+        wakeLock.release().catch(() => {});
+        wakeLock = null;
+      }
+    };
+
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/admin/upload-video');
 
@@ -263,6 +291,7 @@ export default function EpisodesPage() {
     };
 
     xhr.onload = () => {
+      releaseWakeLock();
       setUploadingServerVideo(false);
       setUploadProgress(null);
       if (xhr.status >= 200 && xhr.status < 300) {
@@ -284,14 +313,15 @@ export default function EpisodesPage() {
           toggleExpand(expandedEp);
         }
       } else {
-        alert('Upload failed. Please check server logs.');
+        alert(`Upload failed (Status: ${xhr.status}). If uploading from phone, keep screen ON and verify Nginx timeout settings.`);
       }
     };
 
     xhr.onerror = () => {
+      releaseWakeLock();
       setUploadingServerVideo(false);
       setUploadProgress(null);
-      alert('Network error while uploading video');
+      alert('Upload interrupted or connection dropped. Please keep phone screen ON and active.');
     };
 
     xhr.send(fd);
@@ -475,8 +505,9 @@ export default function EpisodesPage() {
                       style={{ width: `${newEpProgress.pct}%` }}
                     />
                   </div>
-                  <div className="text-right text-xs text-slate-400">
-                    {newEpProgress.text}
+                  <div className="flex justify-between items-center text-xs text-slate-400">
+                    <span className="text-[11px] text-amber-400/90">📱 Screen ON rakhein</span>
+                    <span>{newEpProgress.text}</span>
                   </div>
                 </div>
               )}

@@ -4,6 +4,7 @@ import { requireAdminAuth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 1800; // 30 minutes for slow mobile uploads
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
