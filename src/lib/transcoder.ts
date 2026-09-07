@@ -20,12 +20,12 @@ export function startHlsTranscoding({ inputPath, outputDirName, serverId }: Tran
     const publicMasterUrl = `/uploads/hls/${outputDirName}/master.m3u8`;
 
     // Profiles for Multi-Quality Adaptive Streaming
-    // 360p (Mobile/Data Saver), 720p (HD), 1080p (Full HD), 1440p (2K)
+    // 360p (Mobile/Data Saver), 720p (HD), 1080p (Full HD)
+    // Note: 1440p removed to significantly speed up transcoding time
     const profiles = [
       { name: "360p", width: 640, height: 360, bitrate: "800k", audioBitrate: "64k" },
       { name: "720p", width: 1280, height: 720, bitrate: "2400k", audioBitrate: "128k" },
       { name: "1080p", width: 1920, height: 1080, bitrate: "4800k", audioBitrate: "128k" },
-      { name: "1440p", width: 2560, height: 1440, bitrate: "7500k", audioBitrate: "192k" },
     ];
 
     // Transcode in background using FFmpeg with multi-threading (utilizing the 8 CPUs)
@@ -68,7 +68,7 @@ export function startHlsTranscoding({ inputPath, outputDirName, serverId }: Tran
           "-b:v", p.bitrate,
           "-maxrate", p.bitrate,
           "-bufsize", `${parseInt(p.bitrate) * 1.5}k`,
-          "-preset", "veryfast",
+          "-preset", "ultrafast",
           "-threads", "6",
           "-c:a", "aac",
           "-b:a", p.audioBitrate,
