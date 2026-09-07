@@ -53,11 +53,14 @@ export async function POST(req: Request) {
 
     const animeId = createAnime(data);
 
-    // Check if anime video file or stream URL was also uploaded directly with anime
+    // Check if anime video file or pre-uploaded video_url or stream URL was provided
     const videoFile = formData.get('video') as File | null;
+    const uploadedVideoUrl = formData.get('video_url') as string | null;
     const streamUrl = formData.get('stream_url') as string | null;
 
-    if ((videoFile && videoFile.size > 0) || (streamUrl && streamUrl.trim())) {
+    const hasVideo = (videoFile && videoFile.size > 0) || (uploadedVideoUrl && uploadedVideoUrl.trim());
+
+    if (hasVideo || (streamUrl && streamUrl.trim())) {
       const seasonId = createSeason(animeId, 1, 'Season 1');
       const epTitle = data.type === 'movie' ? data.title : `${data.title} 1x1`;
       const epId = createEpisode({
@@ -69,8 +72,12 @@ export async function POST(req: Request) {
         duration: (formData.get('duration') as string) || '',
       });
 
-      if (videoFile && videoFile.size > 0) {
-        const videoUrl = await saveUploadedFile(videoFile, 'videos');
+      if (hasVideo) {
+        let videoUrl = uploadedVideoUrl ? uploadedVideoUrl.trim() : '';
+        if (!videoUrl && videoFile && videoFile.size > 0) {
+          videoUrl = await saveUploadedFile(videoFile, 'videos');
+        }
+
         const path = await import('path');
         const absoluteVideoPath = path.join(process.cwd(), 'public', videoUrl);
         const serverId = createServer({
@@ -84,8 +91,14 @@ export async function POST(req: Request) {
         // Register video download
         try {
           const { createDownload } = await import('@/lib/db');
-          const ext = path.extname(videoFile.name || '').replace('.', '').toUpperCase() || 'MP4';
-          const fileSizeMB = (videoFile.size / (1024 * 1024)).toFixed(1);
+          const ext = path.extname(videoUrl || '').replace('.', '').toUpperCase() || 'MP4';
+          const fs = await import('fs/promises');
+          let fileSizeMB = '100.0';
+          try {
+            const stat = await fs.stat(absoluteVideoPath);
+            fileSizeMB = (stat.size / (1024 * 1024)).toFixed(1);
+          } catch {}
+
           createDownload({
             episode_id: epId,
             quality: `1080p Full HD (${ext})`,

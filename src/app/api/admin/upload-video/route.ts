@@ -17,15 +17,20 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const videoFile = formData.get("video") as File | null;
+    const uploadedVideoUrl = formData.get("video_url") as string | null;
     const episodeId = formData.get("episode_id") ? parseInt(formData.get("episode_id") as string) : null;
     const serverName = (formData.get("server_name") as string) || "Multi-Quality HD (2K / 1080p / 720p / 360p)";
 
-    if (!videoFile || videoFile.size === 0) {
-      return NextResponse.json({ error: "No video file uploaded" }, { status: 400 });
+    const hasVideo = (videoFile && videoFile.size > 0) || (uploadedVideoUrl && uploadedVideoUrl.trim());
+    if (!hasVideo) {
+      return NextResponse.json({ error: "No video file provided" }, { status: 400 });
     }
 
-    // Save into public/uploads/videos/ with strict extension checking
-    const videoUrl = await saveUploadedFile(videoFile, "videos");
+    let videoUrl = uploadedVideoUrl ? uploadedVideoUrl.trim() : "";
+    if (!videoUrl && videoFile && videoFile.size > 0) {
+      videoUrl = await saveUploadedFile(videoFile, "videos");
+    }
+
     const absoluteVideoPath = path.join(process.cwd(), "public", videoUrl);
 
     let serverId = null;
@@ -40,8 +45,14 @@ export async function POST(request: Request) {
 
       // Also register real video download for VIP members
       try {
-        const ext = path.extname(videoFile.name || "").replace(".", "").toUpperCase() || "MP4";
-        const fileSizeMB = (videoFile.size / (1024 * 1024)).toFixed(1);
+        const ext = path.extname(videoUrl || "").replace(".", "").toUpperCase() || "MP4";
+        const fs = await import("fs/promises");
+        let fileSizeMB = "100.0";
+        try {
+          const stat = await fs.stat(absoluteVideoPath);
+          fileSizeMB = (stat.size / (1024 * 1024)).toFixed(1);
+        } catch {}
+
         createDownload({
           episode_id: episodeId,
           quality: `1080p Full HD (${ext})`,
@@ -69,8 +80,8 @@ export async function POST(request: Request) {
       success: true,
       url: videoUrl,
       serverId,
-      fileName: videoFile.name,
-      fileSize: videoFile.size,
+      fileName: videoFile?.name || path.basename(videoUrl),
+      fileSize: videoFile?.size || 0,
       transcoding: true,
     });
   } catch (err: any) {

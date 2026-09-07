@@ -35,17 +35,8 @@ export default function NewAnimePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setUploadStatus(videoFile ? 'Uploading anime video and posters...' : 'Saving anime...');
+    setUploadStatus(videoFile ? 'Preparing video upload...' : 'Saving anime...');
     setUploadProgress({ pct: 0, text: '0 MB' });
-    
-    const data = new FormData();
-    Object.entries(formData).forEach(([k, v]) => data.append(k, String(v)));
-    data.append('languages', JSON.stringify(languages));
-    data.append('genres', JSON.stringify(genres));
-    if (poster) data.append('poster', poster);
-    if (backdrop) data.append('backdrop', backdrop);
-    if (thumbnail) data.append('thumbnail', thumbnail);
-    if (videoFile) data.append('video', videoFile);
 
     let wakeLock: any = null;
     if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
@@ -60,49 +51,67 @@ export default function NewAnimePage() {
       }
     };
 
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/admin/anime');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') || '' : '';
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') : '';
-    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-
-    xhr.upload.onprogress = (ev) => {
-      if (ev.lengthComputable) {
-        const pct = Math.round((ev.loaded / ev.total) * 100);
-        const loadedMb = (ev.loaded / 1024 / 1024).toFixed(1);
-        const totalMb = (ev.total / 1024 / 1024).toFixed(1);
-        setUploadProgress({ pct, text: `${loadedMb} / ${totalMb} MB` });
-        setUploadStatus(pct < 100 ? 'Uploading...' : 'File uploaded! Processing on server, please wait...');
+    // 1. Upload video file first in 4MB chunks (prevents 1.4MB freeze on mobile & Mac)
+    let preUploadedVideoUrl = '';
+    if (videoFile) {
+      setUploadStatus('Uploading video in 4MB fast chunks (0%)...');
+      try {
+        const { uploadVideoInChunks } = await import('@/lib/chunkedUpload');
+        preUploadedVideoUrl = await uploadVideoInChunks(videoFile, token, (pct, loadedMb, totalMb) => {
+          setUploadProgress({ pct, text: `${loadedMb} / ${totalMb} MB` });
+          setUploadStatus(pct < 100 ? `Uploading video: ${pct}% (${loadedMb} / ${totalMb} MB)` : 'Video uploaded! Saving anime details...');
+        });
+      } catch (uploadErr: any) {
+        releaseWakeLock();
+        setLoading(false);
+        setUploadProgress(null);
+        setUploadStatus('');
+        alert('Video upload error: ' + (uploadErr.message || 'Connection dropped'));
+        return;
       }
-    };
+    }
 
-    xhr.onload = () => {
+    // 2. Submit anime metadata and images
+    setUploadStatus('Saving anime details and images...');
+    const data = new FormData();
+    Object.entries(formData).forEach(([k, v]) => data.append(k, String(v)));
+    data.append('languages', JSON.stringify(languages));
+    data.append('genres', JSON.stringify(genres));
+    if (poster) data.append('poster', poster);
+    if (backdrop) data.append('backdrop', backdrop);
+    if (thumbnail) data.append('thumbnail', thumbnail);
+    if (preUploadedVideoUrl) {
+      data.append('video_url', preUploadedVideoUrl);
+    }
+
+    try {
+      const res = await fetch('/api/admin/anime', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: data,
+      });
+
       releaseWakeLock();
       setLoading(false);
       setUploadProgress(null);
       setUploadStatus('');
-      if (xhr.status >= 200 && xhr.status < 300) {
+
+      if (res.ok) {
         alert('Anime & files uploaded successfully!');
         router.push('/admin/anime');
       } else {
-        try {
-          const error = JSON.parse(xhr.responseText);
-          alert('Error: ' + (error.error || 'Failed to create anime'));
-        } catch {
-          alert(`Upload failed (Status: ${xhr.status}). If using mobile, ensure screen stayed ON and Nginx timeout is configured.`);
-        }
+        const error = await res.json().catch(() => ({}));
+        alert('Error: ' + (error.error || 'Failed to create anime'));
       }
-    };
-
-    xhr.onerror = () => {
+    } catch (err: any) {
       releaseWakeLock();
       setLoading(false);
       setUploadProgress(null);
       setUploadStatus('');
-      alert('Upload interrupted or connection dropped. Please keep screen ON and tab active while uploading.');
-    };
-
-    xhr.send(data);
+      alert('Network error saving anime: ' + (err.message || 'Failed'));
+    }
   };
 
   const FileUpload = ({ label, file, setFile }: { label: string, file: File | null, setFile: (f: File | null) => void }) => (

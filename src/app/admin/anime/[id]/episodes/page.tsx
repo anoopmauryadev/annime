@@ -121,15 +121,6 @@ export default function EpisodesPage() {
     setAddingEp(true);
     setNewEpProgress({ pct: 0, text: '0 MB' });
 
-    const fd = new FormData();
-    fd.append('anime_id', animeId);
-    fd.append('season_id', String(selectedSeason));
-    fd.append('episode_number', String(newEpNum));
-    fd.append('title', newEpTitle);
-    if (newEpThumb) fd.append('thumbnail', newEpThumb);
-    if (newEpVideo) fd.append('video', newEpVideo);
-    if (newEpStreamUrl) fd.append('stream_url', newEpStreamUrl);
-
     let wakeLock: any = null;
     if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
       try {
@@ -143,26 +134,47 @@ export default function EpisodesPage() {
       }
     };
 
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/admin/episodes');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') || '' : '';
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') : '';
-    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-
-    xhr.upload.onprogress = (ev) => {
-      if (ev.lengthComputable) {
-        const pct = Math.round((ev.loaded / ev.total) * 100);
-        const loadedMb = (ev.loaded / 1024 / 1024).toFixed(1);
-        const totalMb = (ev.total / 1024 / 1024).toFixed(1);
-        setNewEpProgress({ pct, text: `${loadedMb} / ${totalMb} MB` });
+    // 1. Upload video in 4MB chunks if provided
+    let preUploadedVideoUrl = '';
+    if (newEpVideo) {
+      try {
+        const { uploadVideoInChunks } = await import('@/lib/chunkedUpload');
+        preUploadedVideoUrl = await uploadVideoInChunks(newEpVideo, token, (pct, loadedMb, totalMb) => {
+          setNewEpProgress({ pct, text: `${loadedMb} / ${totalMb} MB` });
+        });
+      } catch (uploadErr: any) {
+        releaseWakeLock();
+        setAddingEp(false);
+        setNewEpProgress(null);
+        alert('Video upload error: ' + (uploadErr.message || 'Connection dropped'));
+        return;
       }
-    };
+    }
 
-    xhr.onload = async () => {
+    // 2. Submit episode details
+    const fd = new FormData();
+    fd.append('anime_id', animeId);
+    fd.append('season_id', String(selectedSeason));
+    fd.append('episode_number', String(newEpNum));
+    fd.append('title', newEpTitle);
+    if (newEpThumb) fd.append('thumbnail', newEpThumb);
+    if (preUploadedVideoUrl) fd.append('video_url', preUploadedVideoUrl);
+    if (newEpStreamUrl) fd.append('stream_url', newEpStreamUrl);
+
+    try {
+      const res = await fetch('/api/admin/episodes', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+
       releaseWakeLock();
       setAddingEp(false);
       setNewEpProgress(null);
-      if (xhr.status >= 200 && xhr.status < 300) {
+
+      if (res.ok) {
         setNewEpTitle('');
         setNewEpThumb(null);
         setNewEpVideo(null);
@@ -170,23 +182,15 @@ export default function EpisodesPage() {
         setNewEpNum(newEpNum + 1);
         await fetchEpisodes();
       } else {
-        try {
-          const err = JSON.parse(xhr.responseText);
-          alert('Failed to add episode: ' + (err.error || 'Server error'));
-        } catch {
-          alert(`Upload failed (Status: ${xhr.status}). If uploading from phone, keep screen ON and verify Nginx timeout settings.`);
-        }
+        const err = await res.json().catch(() => ({}));
+        alert('Failed to add episode: ' + (err.error || 'Server error'));
       }
-    };
-
-    xhr.onerror = () => {
+    } catch (err: any) {
       releaseWakeLock();
       setAddingEp(false);
       setNewEpProgress(null);
-      alert('Upload interrupted or connection dropped. Please keep phone screen ON and active.');
-    };
-
-    xhr.send(fd);
+      alert('Network error adding episode: ' + (err.message || 'Failed'));
+    }
   };
 
   const deleteEpisode = async (eid: number) => {
@@ -249,16 +253,11 @@ export default function EpisodesPage() {
     } catch { /* ignore */ }
   };
 
-  // Upload a video file directly to existing episode with progress tracking
+  // Upload a video file directly to existing episode with chunked upload & progress tracking
   const uploadVideoToServer = async () => {
     if (!expandedEp || !serverVideoFile) return;
     setUploadingServerVideo(true);
     setUploadProgress({ pct: 0, text: '0 MB' });
-
-    const fd = new FormData();
-    fd.append('video', serverVideoFile);
-    fd.append('episode_id', String(expandedEp));
-    fd.append('server_name', serverVideoName || 'Multi-Quality HD (2K/1080p/720p/360p)');
 
     let wakeLock: any = null;
     if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
@@ -273,58 +272,63 @@ export default function EpisodesPage() {
       }
     };
 
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/admin/upload-video');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') || '' : '';
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') : '';
-    if (token) {
-      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    // 1. Upload video file first in 4MB chunks
+    let preUploadedVideoUrl = '';
+    try {
+      const { uploadVideoInChunks } = await import('@/lib/chunkedUpload');
+      preUploadedVideoUrl = await uploadVideoInChunks(serverVideoFile, token, (pct, loadedMb, totalMb) => {
+        setUploadProgress({ pct, text: `${loadedMb} / ${totalMb} MB` });
+      });
+    } catch (uploadErr: any) {
+      releaseWakeLock();
+      setUploadingServerVideo(false);
+      setUploadProgress(null);
+      alert('Video upload error: ' + (uploadErr.message || 'Connection dropped'));
+      return;
     }
 
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        const pct = Math.round((e.loaded / e.total) * 100);
-        const loadedMb = (e.loaded / 1024 / 1024).toFixed(1);
-        const totalMb = (e.total / 1024 / 1024).toFixed(1);
-        setUploadProgress({ pct, text: `${loadedMb} / ${totalMb} MB` });
-      }
-    };
+    // 2. Register video server with episode
+    const fd = new FormData();
+    fd.append('video_url', preUploadedVideoUrl);
+    fd.append('episode_id', String(expandedEp));
+    fd.append('server_name', serverVideoName || 'Multi-Quality HD (2K/1080p/720p/360p)');
 
-    xhr.onload = () => {
+    try {
+      const res = await fetch('/api/admin/upload-video', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+
       releaseWakeLock();
       setUploadingServerVideo(false);
       setUploadProgress(null);
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const res = JSON.parse(xhr.responseText);
-          setServerVideoFile(null);
-          if (res.serverId) {
-            setTranscodeJobs((prev) => ({
-              ...prev,
-              [res.serverId]: {
-                status: 'processing',
-                progress_text: 'Starting background multi-quality HLS transcoding...',
-              },
-            }));
-            pollTranscodeJob(res.serverId);
-          }
-          toggleExpand(expandedEp);
-        } catch {
-          toggleExpand(expandedEp);
+
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setServerVideoFile(null);
+        if (data.serverId) {
+          setTranscodeJobs((prev) => ({
+            ...prev,
+            [data.serverId]: {
+              status: 'processing',
+              progress_text: 'Starting background multi-quality HLS transcoding...',
+            },
+          }));
+          pollTranscodeJob(data.serverId);
         }
+        toggleExpand(expandedEp);
       } else {
-        alert(`Upload failed (Status: ${xhr.status}). If uploading from phone, keep screen ON and verify Nginx timeout settings.`);
+        alert(`Server registration failed (Status: ${res.status}).`);
       }
-    };
-
-    xhr.onerror = () => {
+    } catch (err: any) {
       releaseWakeLock();
       setUploadingServerVideo(false);
       setUploadProgress(null);
-      alert('Upload interrupted or connection dropped. Please keep phone screen ON and active.');
-    };
-
-    xhr.send(fd);
+      alert('Network error: ' + (err.message || 'Failed'));
+    }
   };
 
   const cleanInputUrl = (url: string) => {

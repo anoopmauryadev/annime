@@ -41,10 +41,16 @@ export async function POST(request: Request) {
     // Create the episode
     const epId = createEpisode({ anime_id, season_id, episode_number, title, duration, thumbnail });
 
-    // Check if a direct anime video file was uploaded
+    // Check if a direct anime video file or pre-uploaded video_url was provided
     const videoFile = formData.get("video") as File | null;
-    if (videoFile && videoFile.size > 0) {
-      const videoUrl = await saveUploadedFile(videoFile, "videos");
+    const uploadedVideoUrl = formData.get("video_url") as string | null;
+
+    if ((videoFile && videoFile.size > 0) || (uploadedVideoUrl && uploadedVideoUrl.trim())) {
+      let videoUrl = uploadedVideoUrl ? uploadedVideoUrl.trim() : "";
+      if (!videoUrl && videoFile && videoFile.size > 0) {
+        videoUrl = await saveUploadedFile(videoFile, "videos");
+      }
+
       const path = await import("path");
       const absoluteVideoPath = path.join(process.cwd(), "public", videoUrl);
       const serverName = (formData.get("server_name") as string) || "Multi-Quality HD (2K / 1080p / 720p / 360p)";
