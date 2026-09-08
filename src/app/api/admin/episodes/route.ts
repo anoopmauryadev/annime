@@ -67,16 +67,22 @@ export async function POST(request: Request) {
       // Keep the original download available after the server switches to HLS.
       createDownload({ episode_id: epId, quality: "Original", download_url: videoUrl });
 
-      // Background multi-quality HLS transcoding
+      // Background multi-quality HLS transcoding — only if enabled
       const { startHlsTranscoding } = await import("@/lib/transcoder");
-      const outputDirName = `ep_${epId}_${Date.now()}`;
-      startHlsTranscoding({
-        inputPath: absoluteVideoPath,
-        outputDirName,
-        serverId,
-      }).catch((err) => {
-        console.error("[Episodes] Error during background HLS transcoding:", err);
-      });
+      const { getSiteSettings: getSettings } = await import("@/lib/db");
+      const siteConf = getSettings();
+      if (siteConf.auto_transcode_enabled !== "0") {
+        const outputDirName = `ep_${epId}_${Date.now()}`;
+        startHlsTranscoding({
+          inputPath: absoluteVideoPath,
+          outputDirName,
+          serverId,
+        }).catch((err) => {
+          console.error("[Episodes] Error during background HLS transcoding:", err);
+        });
+      } else {
+        console.log("[Episodes] Auto-transcoding is OFF — skipping HLS conversion for server", serverId);
+      }
     } else {
       // Check if external stream_url was provided
       const streamUrl = formData.get("stream_url") as string | null;

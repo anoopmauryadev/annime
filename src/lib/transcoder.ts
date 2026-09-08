@@ -9,8 +9,25 @@ interface TranscodeOptions {
   serverId?: number; // Optional DB server ID to update upon completion
 }
 
+// Keep transcoding off the request path and run only one heavy FFmpeg job at a
+// time. This prevents a burst of uploads from starving the web server.
+const transcodeQueue: Array<() => Promise<void>> = [];
+let activeTranscodes = 0;
+const maxConcurrentTranscodes = Math.max(1, Number(process.env.TRANSCODE_CONCURRENCY || 1));
+
+function drainTranscodeQueue() {
+  while (activeTranscodes < maxConcurrentTranscodes && transcodeQueue.length) {
+    const job = transcodeQueue.shift()!;
+    activeTranscodes += 1;
+    void job().finally(() => {
+      activeTranscodes -= 1;
+      drainTranscodeQueue();
+    });
+  }
+}
+
 export function startHlsTranscoding({ inputPath, outputDirName, serverId }: TranscodeOptions): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const hlsBaseDir = path.join(process.cwd(), "public", "uploads", "hls", outputDirName);
     if (!fs.existsSync(hlsBaseDir)) {
       fs.mkdirSync(hlsBaseDir, { recursive: true });
@@ -28,9 +45,9 @@ export function startHlsTranscoding({ inputPath, outputDirName, serverId }: Tran
       { name: "1080p", width: 1920, height: 1080, bitrate: "4800k", audioBitrate: "128k" },
     ];
 
-    // Transcode in background using FFmpeg with multi-threading (utilizing the 8 CPUs)
-    // We create individual playlists for each profile then write master.m3u8
-    (async () => {
+    // Queue the work so uploads return immediately and FFmpeg cannot saturate
+    // all CPU cores while requests are being served.
+    transcodeQueue.push(async () => {
       console.log(`[Transcoder] Starting multi-quality HLS transcoding for: ${inputPath}`);
 
       // Create transcode job record for status tracking
@@ -68,8 +85,8 @@ export function startHlsTranscoding({ inputPath, outputDirName, serverId }: Tran
           "-b:v", p.bitrate,
           "-maxrate", p.bitrate,
           "-bufsize", `${parseInt(p.bitrate) * 1.5}k`,
-          "-preset", "ultrafast",
-          "-threads", "6",
+          "-preset", "veryfast",
+          "-threads", String(Math.max(1, Number(process.env.TRANSCODE_THREADS || 2))),
           "-c:a", "aac",
           "-b:a", p.audioBitrate,
           "-hls_time", "4",
@@ -125,7 +142,8 @@ export function startHlsTranscoding({ inputPath, outputDirName, serverId }: Tran
           });
         } catch {}
       }
-    })();
+    });
+    drainTranscodeQueue();
 
     // Resolve immediately with the public master URL
     resolve(publicMasterUrl);

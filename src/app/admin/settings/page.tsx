@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Lock, Eye, EyeOff, CheckCircle2, AlertTriangle, ShieldAlert, Power, Upload, Film } from 'lucide-react';
+import { Lock, Eye, EyeOff, CheckCircle2, AlertTriangle, ShieldAlert, Power, Upload, Film, Clapperboard } from 'lucide-react';
 import { adminFetch } from '@/lib/adminApi';
 
 export default function AdminSettingsPage() {
@@ -25,6 +25,11 @@ export default function AdminSettingsPage() {
   const [introSaving, setIntroSaving] = useState(false);
   const [introMessage, setIntroMessage] = useState('');
 
+  // --- Transcoding Toggle State ---
+  const [transcodeEnabled, setTranscodeEnabled] = useState(true);
+  const [transcodeLoading, setTranscodeLoading] = useState(false);
+  const [transcodeSaved, setTranscodeSaved] = useState(false);
+
   // Load current settings on mount
   useEffect(() => {
     (async () => {
@@ -36,6 +41,7 @@ export default function AdminSettingsPage() {
         setIntroEnabled(data.video_intro_enabled !== '0');
         setIntroDownloadEnabled(data.video_intro_download_enabled === '1');
         if (data.video_intro_url) setIntroUrl(data.video_intro_url);
+        setTranscodeEnabled(data.auto_transcode_enabled !== '0');
         setSettingsLoaded(true);
       } catch {
         setSettingsLoaded(true);
@@ -118,6 +124,28 @@ export default function AdminSettingsPage() {
     }
   };
 
+  // Toggle transcoding
+  const handleTranscodeToggle = async () => {
+    const newValue = !transcodeEnabled;
+    setTranscodeLoading(true);
+    setTranscodeSaved(false);
+    try {
+      const res = await adminFetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auto_transcode_enabled: newValue ? '1' : '0' }),
+      });
+      if (res.ok) {
+        setTranscodeEnabled(newValue);
+        setTranscodeSaved(true);
+        setTimeout(() => setTranscodeSaved(false), 3000);
+      }
+    } catch {}
+    finally {
+      setTranscodeLoading(false);
+    }
+  };
+
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(null);
@@ -161,6 +189,57 @@ export default function AdminSettingsPage() {
       <div>
         <h1 className="text-3xl font-bold text-white">Settings</h1>
         <p className="text-xs text-slate-400 mt-1">Admin account settings, security & site controls</p>
+      </div>
+
+      {/* ═══════════════ Auto-Transcoding Toggle Card ═══════════════ */}
+      <div className={`rounded-2xl border overflow-hidden transition-all duration-300 ${transcodeEnabled ? 'bg-[#1a1a2e] border-cyan-500/30' : 'bg-slate-950/40 border-slate-800'}`}>
+        <div className="p-6 border-b border-slate-800/50 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`p-2.5 rounded-xl transition-colors ${transcodeEnabled ? 'bg-cyan-500/20 text-cyan-400' : 'bg-slate-700/30 text-slate-500'}`}>
+              <Clapperboard size={20} />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-white">Auto Transcoding (HLS)</h2>
+              <p className="text-xs text-slate-400">Convert uploaded videos to multi-quality HLS (360p/720p/1080p)</p>
+            </div>
+          </div>
+
+          {/* Toggle Switch */}
+          <button
+            onClick={handleTranscodeToggle}
+            disabled={transcodeLoading || !settingsLoaded}
+            className={`relative inline-flex h-8 w-[60px] items-center rounded-full transition-all duration-300 focus:outline-none disabled:opacity-50 ${transcodeEnabled ? 'bg-cyan-500 shadow-lg shadow-cyan-500/30' : 'bg-slate-700'}`}
+          >
+            <span className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform duration-300 shadow-md ${transcodeEnabled ? 'translate-x-[34px]' : 'translate-x-[2px]'}`} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {/* Status indicator */}
+          <div className={`flex items-center gap-2 text-sm font-medium ${transcodeEnabled ? 'text-cyan-400' : 'text-slate-500'}`}>
+            <Power size={14} />
+            <span>
+              {transcodeEnabled
+                ? '🟢 ON — Videos will auto-convert to multi-quality HLS after upload'
+                : '🔴 OFF — Videos will be served as original file (no multi-quality)'}
+            </span>
+          </div>
+
+          {transcodeSaved && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm flex items-center gap-2">
+              <CheckCircle2 size={14} />
+              Transcoding setting saved!
+            </div>
+          )}
+
+          {/* Info box */}
+          <div className="p-4 rounded-xl bg-slate-800/30 border border-slate-700/50 text-xs text-slate-400 space-y-1">
+            <p className="font-semibold text-slate-300 mb-2">ℹ️ How it works:</p>
+            <p>🎬 <strong className="text-slate-300">ON:</strong> After upload, FFmpeg creates 360p + 720p + 1080p HLS streams (uses CPU)</p>
+            <p>⚡ <strong className="text-slate-300">OFF:</strong> Videos are served as-is, no CPU-heavy transcoding (faster uploads)</p>
+            <p>💡 <strong className="text-slate-300">Tip:</strong> Turn OFF when uploading many videos, then run <code className="px-1.5 py-0.5 bg-slate-800 rounded text-cyan-300">npm run transcode</code> later to batch-process</p>
+          </div>
+        </div>
       </div>
 
       {/* ═══════════════ Maintenance Mode Card ═══════════════ */}

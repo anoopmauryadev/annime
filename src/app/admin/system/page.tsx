@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   Activity, Server, Database, HardDrive, Cpu, MemoryStick,
   Clock, RefreshCw, CheckCircle2, XCircle, AlertTriangle,
-  Zap, Globe, Shield, Key, Wrench, MonitorCog
+  Zap, Globe, Shield, Key, Wrench, MonitorCog, Clapperboard
 } from 'lucide-react';
 import { adminFetch } from '@/lib/adminApi';
 
@@ -59,6 +59,7 @@ interface SystemStatus {
     keySystemEnabled: boolean;
     shortenerProvider: string;
     hasShortenerKey: boolean;
+    autoTranscodeEnabled: boolean;
   };
   services: ServiceInfo[];
 }
@@ -250,6 +251,7 @@ export default function SystemStatusPage() {
                    svc.name.includes('Storage') ? <HardDrive size={16} className="text-purple-400" /> :
                    svc.name.includes('Key') ? <Key size={16} className="text-amber-400" /> :
                    svc.name.includes('Maintenance') ? <Shield size={16} className="text-red-400" /> :
+                   svc.name.includes('Transcod') ? <Clapperboard size={16} className="text-cyan-400" /> :
                    <Server size={16} className="text-slate-400" />}
                 </div>
                 <div>
@@ -489,7 +491,7 @@ export default function SystemStatusPage() {
           </div>
           <h3 className="font-bold text-white text-sm">Feature Flags</h3>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {[
             {
               label: 'Maintenance Mode',
@@ -514,6 +516,12 @@ export default function SystemStatusPage() {
               enabled: data.features.shortenerProvider !== 'none',
               icon: Globe,
               activeColor: 'text-blue-400 bg-blue-500/10',
+            },
+            {
+              label: 'Auto Transcoding',
+              enabled: data.features.autoTranscodeEnabled,
+              icon: Clapperboard,
+              activeColor: 'text-cyan-400 bg-cyan-500/10',
             },
           ].map((feature, i) => (
             <div key={i} className={`p-4 rounded-xl border text-center ${feature.enabled ? 'border-slate-700 bg-slate-800/20' : 'border-slate-800/50 bg-slate-900/30'}`}>

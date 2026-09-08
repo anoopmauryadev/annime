@@ -15,6 +15,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
   }
 
+  let transcodingEnabled = false;
   try {
     const formData = await request.formData();
     const videoFile = formData.get("video") as File | null;
@@ -75,14 +76,21 @@ export async function POST(request: Request) {
       // Generate a unique folder name for HLS segments based on timestamp and clean name
       const outputDirName = `ep_${episodeId}_${Date.now()}`;
       
-      // Trigger background HLS multi-bitrate transcoding (non-blocking)
-      startHlsTranscoding({
-        inputPath: absoluteVideoPath,
-        outputDirName,
-        serverId,
-      }).catch((err) => {
-        console.error("[Upload] Error during background HLS transcoding:", err);
-      });
+      // Background multi-quality HLS transcoding (non-blocking) — only if enabled
+      const { getSiteSettings } = await import("@/lib/db");
+      const siteSettings = getSiteSettings();
+    transcodingEnabled = siteSettings.auto_transcode_enabled !== "0";
+    if (transcodingEnabled) {
+        startHlsTranscoding({
+          inputPath: absoluteVideoPath,
+          outputDirName,
+          serverId,
+        }).catch((err) => {
+          console.error("[Upload] Error during background HLS transcoding:", err);
+        });
+      } else {
+        console.log("[Upload] Auto-transcoding is OFF — skipping HLS conversion for server", serverId);
+      }
     }
 
     return NextResponse.json({
@@ -91,7 +99,7 @@ export async function POST(request: Request) {
       serverId,
       fileName: videoFile?.name || path.basename(videoUrl),
       fileSize: videoFile?.size || 0,
-      transcoding: true,
+      transcoding: transcodingEnabled,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Failed to upload video" }, { status: 500 });

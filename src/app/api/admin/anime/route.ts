@@ -109,16 +109,22 @@ export async function POST(req: Request) {
           });
         } catch {}
 
-        // Background multi-quality HLS transcoding
+        // Background multi-quality HLS transcoding — only if enabled
         const { startHlsTranscoding } = await import('@/lib/transcoder');
-        const outputDirName = `ep_${epId}_${Date.now()}`;
-        startHlsTranscoding({
-          inputPath: absoluteVideoPath,
-          outputDirName,
-          serverId,
-        }).catch((err) => {
-          console.error('[Anime] Error during background HLS transcoding:', err);
-        });
+        const { getSiteSettings: getConf } = await import('@/lib/db');
+        const conf = getConf();
+        if (conf.auto_transcode_enabled !== '0') {
+          const outputDirName = `ep_${epId}_${Date.now()}`;
+          startHlsTranscoding({
+            inputPath: absoluteVideoPath,
+            outputDirName,
+            serverId,
+          }).catch((err) => {
+            console.error('[Anime] Error during background HLS transcoding:', err);
+          });
+        } else {
+          console.log('[Anime] Auto-transcoding is OFF — skipping HLS conversion for server', serverId);
+        }
       } else if (streamUrl && streamUrl.trim()) {
         createServer({
           episode_id: epId,

@@ -293,6 +293,7 @@ export async function GET(request: Request) {
     const keySystemEnabled = settings.key_system_enabled === "1";
     const shortenerProvider = settings.shortener_provider || "none";
     const hasShortenerKey = !!settings.shortener_api_token;
+    const autoTranscodeEnabled = settings.auto_transcode_enabled !== "0";
 
     // ─── Database Table Counts ───────────────────────
     let tableCounts: Record<string, number> = {};
@@ -361,6 +362,7 @@ export async function GET(request: Request) {
         keySystemEnabled,
         shortenerProvider,
         hasShortenerKey,
+        autoTranscodeEnabled,
       },
 
       services: [
@@ -395,6 +397,11 @@ export async function GET(request: Request) {
           name: "Maintenance Mode",
           status: maintenanceMode ? "active" : "off",
           detail: maintenanceMode ? "Site is offline for users" : "Site is live",
+        },
+        {
+          name: "Auto Transcoding",
+          status: autoTranscodeEnabled ? "online" : "disabled",
+          detail: autoTranscodeEnabled ? "Videos auto-convert to HLS after upload" : "Transcoding disabled — videos served as-is",
         },
       ],
     });
