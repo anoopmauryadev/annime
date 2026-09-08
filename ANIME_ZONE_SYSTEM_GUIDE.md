@@ -138,14 +138,16 @@ Toggle पहले से चल रही FFmpeg process को cancel नह�
 
 मुख्य file `src/lib/transcoder.ts` है। ON होने पर 360p, 720p और 1080p HLS variants बनते हैं। प्रत्येक variant में H.264 video, AAC audio, 4-second segments और `.m3u8` playlist होती है। अंत में `master.m3u8` बनती है।
 
-CPU overload रोकने के लिए अब in-memory queue है:
+Local development में controlled in-memory queue है। VPS production में अलग PM2 worker और SQLite-backed persistent queue है:
 
 - Default एक समय में केवल 1 heavy FFmpeg job चलता है।
 - Default FFmpeg threads 2 हैं।
-- `TRANSCODE_CONCURRENCY` concurrency बदल सकता है।
 - `TRANSCODE_THREADS` thread count बदल सकता है।
+- `annime-transcoder` worker website process से अलग FFmpeg jobs चलाता है।
+- Worker restart पर `processing` job वापस queue में आती है।
+- Failed job अधिकतम तीन attempts तक retry होती है।
 
-Upload request transcoding पूरा होने का इंतज़ार नहीं करती। Original video पहले available रहता है; HLS तैयार होने पर server record master playlist पर update होता है। Queue process memory में है, इसलिए app restart पर queued jobs reset होते हैं।
+Upload request transcoding पूरा होने का इंतज़ार नहीं करती। Original video पहले available रहता है; HLS तैयार होने पर server record master playlist पर update होता है।
 
 ## 10. Player और intro
 
@@ -202,6 +204,8 @@ Admin panel से anime, seasons, episodes, servers, users, VIP codes, keys, in
 ## 15. VPS deployment
 
 `setup.sh` Node.js और FFmpeg install करता है, restricted `annime` user बनाता है, permissions set करता है, database migration और production build चलाता है, फिर PM2 और Nginx configure करता है। Production में app और FFmpeg को `root` user से नहीं चलाना चाहिए।
+
+Setup दो PM2 processes चलाता है: `annime` web application और `annime-transcoder` persistent FFmpeg worker। SQLite का consistent daily backup सुबह 3:15 पर `data/backups/` में बनता है और default 14 दिन रखा जाता है। Manual backup के लिए `npm run backup` चलाया जा सकता है। Server request errors और worker events structured JSON logs में लिखे जाते हैं।
 
 VPS पर पुराने FFmpeg jobs देखने के लिए:
 

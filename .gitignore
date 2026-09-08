@@ -57,6 +57,8 @@ public/uploads/hls/
 public/uploads/brand/
 public/uploads/downloads/
 data/intro-downloads/
+data/backups/
+data/backup.log
 public/uploads/*.png
 public/uploads/*.jpg
 public/uploads/*.webp

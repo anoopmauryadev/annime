@@ -139,6 +139,10 @@ function initializeDatabase(db: Database.Database) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       episode_id INTEGER,
       server_id INTEGER,
+      input_path TEXT,
+      output_dir_name TEXT,
+      master_url TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
       status TEXT DEFAULT 'pending',
       progress_text TEXT DEFAULT 'Queued',
       error TEXT DEFAULT '',
@@ -225,6 +229,17 @@ function initializeDatabase(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_vip_codes_code ON vip_codes(code);
     CREATE INDEX IF NOT EXISTS idx_vip_codes_used ON vip_codes(is_used);
   `);
+
+  const transcodeColumns = db.prepare("PRAGMA table_info(transcode_jobs)").all() as { name: string }[];
+  const addTranscodeColumn = (name: string, definition: string) => {
+    if (!transcodeColumns.some((column) => column.name === name)) {
+      db.exec(`ALTER TABLE transcode_jobs ADD COLUMN ${name} ${definition}`);
+    }
+  };
+  addTranscodeColumn("input_path", "TEXT");
+  addTranscodeColumn("output_dir_name", "TEXT");
+  addTranscodeColumn("master_url", "TEXT");
+  addTranscodeColumn("attempts", "INTEGER NOT NULL DEFAULT 0");
 
   const adminColumns = db.prepare("PRAGMA table_info(admin_users)").all() as { name: string }[];
   if (!adminColumns.some((column) => column.name === "session_version")) {
@@ -1224,13 +1239,26 @@ export function createTranscodeJob(data: {
   server_id?: number | null;
   status?: string;
   progress_text?: string;
+  input_path?: string;
+  output_dir_name?: string;
+  master_url?: string;
 }) {
   const db = getDb();
   const res = db
     .prepare(
-      "INSERT INTO transcode_jobs (episode_id, server_id, status, progress_text) VALUES (?, ?, ?, ?)"
+      `INSERT INTO transcode_jobs
+       (episode_id, server_id, status, progress_text, input_path, output_dir_name, master_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(data.episode_id || null, data.server_id || null, data.status || "pending", data.progress_text || "Queued");
+    .run(
+      data.episode_id || null,
+      data.server_id || null,
+      data.status || "pending",
+      data.progress_text || "Queued",
+      data.input_path || null,
+      data.output_dir_name || null,
+      data.master_url || null,
+    );
   return res.lastInsertRowid as number;
 }
 

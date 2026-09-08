@@ -95,9 +95,16 @@ if pm2 delete annime 2>/dev/null; then
   pm2 save --force
 fi
 runuser -u annime -- pm2 delete annime 2>/dev/null || true
-runuser -u annime -- pm2 start npm --name "annime" -- start -- --hostname 127.0.0.1
+runuser -u annime -- pm2 delete annime-transcoder 2>/dev/null || true
+runuser -u annime -- env TRANSCODE_WORKER_MODE=external pm2 start npm --name "annime" -- start -- --hostname 127.0.0.1
+runuser -u annime -- env TRANSCODE_THREADS=2 pm2 start scripts/transcode-worker.js --name "annime-transcoder"
 env PATH="$PATH" pm2 startup systemd -u annime --hp /home/annime 2>/dev/null || true
 runuser -u annime -- pm2 save
+
+cat > /etc/cron.d/annime-backup << CRON_BACKUP
+15 3 * * * annime cd $APP_DIR && /usr/bin/node scripts/backup-database.js >> data/backup.log 2>&1
+CRON_BACKUP
+chmod 644 /etc/cron.d/annime-backup
 
 echo "🌐 [7/7] Configuring Nginx Reverse Proxy..."
 mkdir -p /etc/nginx/snippets

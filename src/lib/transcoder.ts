@@ -36,6 +36,27 @@ export function startHlsTranscoding({ inputPath, outputDirName, serverId }: Tran
     const masterPlaylistPath = path.join(hlsBaseDir, "master.m3u8");
     const publicMasterUrl = `/uploads/hls/${outputDirName}/master.m3u8`;
 
+    let jobId: number | null = null;
+    try {
+      jobId = createTranscodeJob({
+        server_id: serverId || null,
+        status: "pending",
+        progress_text: "Queued",
+        input_path: inputPath,
+        output_dir_name: outputDirName,
+        master_url: publicMasterUrl,
+      });
+    } catch (error) {
+      console.error("[Transcoder] Could not persist queued job:", error);
+    }
+
+    // Production VPS runs a separate PM2 worker. It claims this persisted job,
+    // so an app restart cannot silently lose the queue.
+    if (process.env.TRANSCODE_WORKER_MODE === "external") {
+      resolve(publicMasterUrl);
+      return;
+    }
+
     // Profiles for Multi-Quality Adaptive Streaming
     // 360p (Mobile/Data Saver), 720p (HD), 1080p (Full HD)
     // Note: 1440p removed to significantly speed up transcoding time
@@ -50,16 +71,8 @@ export function startHlsTranscoding({ inputPath, outputDirName, serverId }: Tran
     transcodeQueue.push(async () => {
       console.log(`[Transcoder] Starting multi-quality HLS transcoding for: ${inputPath}`);
 
-      // Create transcode job record for status tracking
-      let jobId: number | null = null;
-      try {
-        jobId = createTranscodeJob({
-          server_id: serverId || null,
-          status: "processing",
-          progress_text: "Starting transcoding...",
-        });
-      } catch (e) {
-        console.error("[Transcoder] Could not create job record:", e);
+      if (jobId) {
+        updateTranscodeJob(jobId, { status: "processing", progress_text: "Starting transcoding..." });
       }
 
       const completedProfiles: string[] = [];
