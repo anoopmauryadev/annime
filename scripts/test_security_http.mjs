@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import http from "node:http";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import ts from "typescript";
 
@@ -59,6 +59,7 @@ try {
   await fs.mkdir("public/brand", { recursive: true });
   await fs.copyFile(path.join(root, "public/brand/anime-zone-intro-4k.mp4"), "public/brand/anime-zone-intro-4k.mp4");
   await fs.copyFile(path.join(root, "public/brand/anime-zone-intro-4k.mp4"), "public/uploads/videos/episode.mp4");
+  if (process.env.PLAYWRIGHT_MODULE) execFileSync("ffmpeg", ["-y", "-v", "error", "-stream_loop", "7", "-i", path.join(root, "public/brand/anime-zone-intro-4k.mp4"), "-t", "20", "-c", "copy", "public/uploads/videos/episode.mp4"]);
   process.chdir(root);
   server = spawn(process.execPath, [path.join(root, "node_modules/next/dist/bin/next"), "start", "-H", "127.0.0.1", "-p", String(port)], {
     cwd: temporary, env: { ...process.env, NODE_ENV: "production", ADMIN_SECRET_KEY: "isolated-http-security-fixture-secret-32-chars" }, stdio: "pipe",
@@ -173,6 +174,7 @@ try {
     const { chromium } = await import(process.env.PLAYWRIGHT_MODULE);
     browser = await chromium.launch({ headless: true, channel: "chrome" });
     const page = await browser.newPage();
+    page.setDefaultTimeout(15000);
     await page.goto(`http://127.0.0.1:${port}${watchUrl}`);
     await page.getByText("Sign In to Stream Episode").waitFor();
     await page.context().addCookies([{ name: "user_token", value: userToken, url: `http://127.0.0.1:${port}`, httpOnly: true, sameSite: "Strict" }]);
@@ -184,6 +186,77 @@ try {
     await page.locator("[data-custom-intro], .az-intro-playing").waitFor();
     await page.waitForFunction(() => [...document.querySelectorAll("video")].some((video) => video.currentSrc.includes("/uploads/videos/episode.mp4") && video.currentTime > 0), undefined, { timeout: 15000 });
     console.log("PASS: browser login gate, key gate, VIP play, intro followed by actual protected video playback.");
+    const controls = page.getByRole("region", { name: "Video player controls" });
+    const video = page.locator(".az-player-frame > video");
+    await controls.getByRole("button", { name: "Pause video", exact: true }).click();
+    assert.equal(await video.evaluate(v => v.paused), true);
+    assert.equal(await video.evaluate(v => v.controls), false);
+    await controls.getByRole("slider", { name: "Seek video" }).fill("3");
+    await page.waitForFunction(() => Math.abs(document.querySelector(".az-player-frame > video").currentTime - 3) < 0.2);
+    await controls.getByRole("button", { name: "Forward 10 seconds", exact: true }).click();
+    assert.ok(Math.abs(await video.evaluate(v => v.currentTime) - 13) < 0.2, JSON.stringify(await video.evaluate(v => ({ current: v.currentTime, duration: v.duration, paused: v.paused }))));
+    await controls.getByRole("button", { name: "Rewind 10 seconds", exact: true }).click();
+    assert.ok(Math.abs(await video.evaluate(v => v.currentTime) - 3) < 0.2);
+    await controls.getByRole("button", { name: "Mute", exact: true }).click();
+    assert.equal(await video.evaluate(v => v.muted), true);
+    await controls.getByRole("slider", { name: "Volume", exact: true }).fill("0.4");
+    assert.equal(await video.evaluate(v => v.volume), 0.4);
+    await controls.getByRole("button", { name: "Playback settings", exact: true }).click();
+    await controls.getByRole("combobox", { name: "Playback speed" }).selectOption("1.5");
+    assert.equal(await video.evaluate(v => v.playbackRate), 1.5);
+    assert.equal(await controls.getByRole("combobox", { name: "Video quality" }).count(), 0, "Plain MP4 must not advertise invented quality levels");
+    await controls.getByRole("button", { name: "Close settings" }).click();
+    await controls.focus();
+    await controls.press("ArrowRight");
+    assert.ok(Math.abs(await video.evaluate(v => v.currentTime) - 13) < 0.2);
+    await controls.getByRole("button", { name: "Fullscreen", exact: true }).click();
+    await page.waitForFunction(() => !!document.fullscreenElement);
+    assert.equal(await page.evaluate(() => document.fullscreenElement.classList.contains("az-player-frame")), true);
+    await controls.getByRole("button", { name: "Exit fullscreen" }).click();
+    await controls.getByRole("slider", { name: "Seek video" }).fill("1.6");
+    await page.locator(".az-player-frame").screenshot({ path: path.join(root, "player-desktop-preview.png") });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator(".az-player-frame").screenshot({ path: path.join(root, "player-mobile-preview.png") });
+    assert.ok((await controls.boundingBox()).width <= 390);
+    const surface = controls.getByRole("button", { name: "Show player controls" });
+    const box = await surface.boundingBox();
+    const pointer = { pointerType: "touch", clientX: box.x + box.width * 0.9, clientY: box.y + box.height * 0.5 };
+    await surface.dispatchEvent("pointerup", pointer);
+    await surface.dispatchEvent("pointerup", pointer);
+    assert.ok(Math.abs(await video.evaluate(v => v.currentTime) - 11.6) < 0.2);
+    await controls.getByRole("button", { name: "Play video", exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector(".az-player-frame > video").paused);
+    assert.equal(await page.locator(".az-intro-playing").count(), 0, "Pause/resume must not repeat the intro");
+    console.log("PASS: custom play/pause, seek bar, ±10 seconds, mute/volume, speed, keyboard, fullscreen, mobile double-tap and intro-once behavior.");
+    const hlsDir = path.join(temporary, "public/uploads/hls/control-test");
+    await fs.mkdir(hlsDir, { recursive: true });
+    for (const [name, size] of [["low", "160x90"], ["high", "320x180"]]) {
+      execFileSync("ffmpeg", ["-y", "-v", "error", "-f", "lavfi", "-i", `color=c=navy:s=${size}:r=30:d=8`, "-c:v", "libx264", "-preset", "ultrafast", "-g", "30", "-f", "hls", "-hls_time", "1", "-hls_list_size", "0", path.join(hlsDir, `${name}.m3u8`)]);
+    }
+    await fs.writeFile(path.join(hlsDir, "master.m3u8"), '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=100000,RESOLUTION=160x90\nlow.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=300000,RESOLUTION=320x180\nhigh.m3u8\n');
+    db.prepare("UPDATE servers SET stream_url=? WHERE episode_id=?").run("/uploads/hls/control-test/master.m3u8", episode.id);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.reload();
+    await page.getByRole("button", { name: "Play episode", exact: true }).click();
+    await controls.waitFor();
+    await page.waitForFunction(() => document.querySelector(".az-player-frame > video").currentTime > 0);
+    await controls.getByRole("button", { name: "Playback settings", exact: true }).click();
+    const quality = controls.getByRole("combobox", { name: "Video quality" });
+    await quality.selectOption("0");
+    assert.equal(await quality.inputValue(), "0");
+    await quality.selectOption("-1");
+    assert.equal(await quality.inputValue(), "-1");
+    await video.evaluate(v => { const track = v.addTextTrack("subtitles", "Hindi", "hi"); track.addCue(new VTTCue(0, 8, "Subtitle test")); });
+    await controls.getByRole("combobox", { name: "Subtitles" }).selectOption("0");
+    assert.equal(await video.evaluate(v => v.textTracks[0].mode), "showing");
+    await controls.getByRole("combobox", { name: "Subtitles" }).selectOption("-1");
+    assert.equal(await video.evaluate(v => v.textTracks[0].mode), "disabled");
+    await controls.getByRole("button", { name: "Close settings" }).click();
+    const next = controls.getByRole("link", { name: "Next episode" });
+    const nextUrl = await next.getAttribute("href");
+    await next.click();
+    await page.waitForURL(`**${nextUrl}`);
+    console.log("PASS: real HLS playback and manual/Auto quality selection, subtitle on/off, next-episode navigation.");
   }
 } finally {
   await browser?.close();

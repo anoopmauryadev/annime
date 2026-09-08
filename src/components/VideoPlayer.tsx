@@ -24,6 +24,7 @@ import BrandIntro, { BRAND_INTRO_DURATION } from "./BrandIntro";
 import { useAuth } from "@/context/AuthContext";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import PlayerControls from "./PlayerControls";
 
 interface QualityLevel {
   index: number;
@@ -36,6 +37,8 @@ interface VideoPlayerProps {
   servers: any[];
   animeId?: number;
   episodeId?: number;
+  title?: string;
+  nextEpisodeUrl?: string;
 }
 
 function formatTime(secs: number): string {
@@ -58,7 +61,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   return <EpisodeVideoPlayer key={identity} {...props} />;
 }
 
-function EpisodeVideoPlayer({ servers, animeId, episodeId }: VideoPlayerProps) {
+function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl }: VideoPlayerProps) {
   const { user, token, isLoading } = useAuth();
   const pathname = usePathname();
 
@@ -78,6 +81,7 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId }: VideoPlayerProps) {
   const introPassed = useRef(false);
   const [needsPlay, setNeedsPlay] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const playerRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const lastSavedTime = useRef<number>(0);
   const [isVip, setIsVip] = useState(false);
@@ -498,7 +502,8 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId }: VideoPlayerProps) {
     <div className="w-full flex flex-col rounded-xl overflow-hidden bg-[#141519] shadow-2xl relative select-none">
       {/* Video Display Area */}
       <div 
-        className="aspect-video w-full bg-black relative overflow-hidden group select-none"
+        ref={playerRef}
+        className="az-player-frame aspect-video w-full bg-black relative overflow-hidden group select-none"
         onContextMenu={(e) => e.preventDefault()}
       >
         {isLoading || (user && keyAccess.isLoading) ? (
@@ -680,7 +685,7 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId }: VideoPlayerProps) {
           <>
             <video
               ref={videoRef}
-              controls={introPhase === "complete"}
+              controls={false}
               onPlay={(event) => {
                 if (!introPassed.current) {
                   event.currentTarget.pause();
@@ -707,6 +712,10 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId }: VideoPlayerProps) {
             >
               {!isHls && embedSrc && <source src={embedSrc} type="video/mp4" />}
             </video>
+
+            {introPhase === "complete" && <PlayerControls key={embedSrc} videoRef={videoRef} containerRef={playerRef} hlsRef={hlsRef}
+              qualities={qualityLevels} quality={currentLevel} onQuality={handleQualityChange} onPlay={requestPlayback}
+              title={title} nextEpisodeUrl={nextEpisodeUrl} />}
 
             {/* Resume Playback Prompt Banner (Overlay inside player) */}
             {introPhase !== "playing" && showResumeBanner && savedProgress && (

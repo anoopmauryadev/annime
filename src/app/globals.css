@@ -57,4 +57,62 @@ body {
 @container (max-width: 480px) { .az-intro-idle .az-brand-cinema { flex-direction: row; gap: 12px; } .az-intro-idle .az-brand-cinema .az-wordmark { align-items: flex-start; } .az-intro-idle .az-brand-cinema .az-language { padding-left: 0; } }
 @media (prefers-reduced-motion: reduce) { .az-intro-playing, .az-intro-playing * { animation: none !important; } .az-intro-streak { display: none; } }
 
+/* Controls remain inside the fullscreen video surface. */
+.az-player-frame:fullscreen { width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; }
+.az-player-controls { position: absolute; inset: 0; z-index: 10; color: #fff; container-type: inline-size; outline: none; }
+.az-player-controls:not(.is-visible) { cursor: none; }
+.az-player-surface { position: absolute; inset: 0; width: 100%; height: 100%; background: transparent; border: 0; touch-action: manipulation; cursor: inherit; }
+.az-player-chrome { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .18s ease; background: linear-gradient(180deg, #0009, transparent 35%, transparent 55%, #000d); }
+.az-player-controls.is-visible .az-player-chrome { opacity: 1; }
+.az-player-chrome button, .az-player-chrome a, .az-player-chrome input, .az-player-settings { pointer-events: auto; }
+.az-player-controls button, .az-player-controls a, .az-player-controls select, .az-player-controls input { -webkit-tap-highlight-color: transparent; }
+.az-player-controls button:focus-visible, .az-player-controls a:focus-visible, .az-player-controls input:focus-visible, .az-player-controls select:focus-visible { outline: 2px solid #ff8c45; outline-offset: 3px; }
+.az-player-heading { position: absolute; top: 6%; left: 4%; right: 4%; display: flex; flex-direction: column; gap: 6px; text-shadow: 0 2px 8px #000; }
+.az-player-heading span { color: #ff8c45; font-size: 10px; font-weight: 800; letter-spacing: .22em; }
+.az-player-heading strong { font-size: clamp(12px, 2.2cqw, 22px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.az-player-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: clamp(18px, 5cqw, 64px); }
+.az-player-center button { position: relative; display: grid; place-items: center; width: 48px; height: 48px; border: 0; background: #0005; border-radius: 50%; transition: background .15s, transform .15s; }
+.az-player-center button:hover { background: #ffffff26; transform: scale(1.05); }
+.az-player-center svg { width: 34px; height: 34px; stroke-width: 1.5; }
+.az-player-center button span { position: absolute; top: 19px; font-size: 9px; font-weight: 800; }
+.az-player-center .az-player-main-play { width: clamp(50px, 8cqw, 80px); height: clamp(50px, 8cqw, 80px); background: #ffffff19; border: 1px solid #ffffff36; backdrop-filter: blur(8px); }
+.az-player-center .az-player-main-play svg { width: 38%; height: 38%; }
+.az-player-bottom { position: absolute; left: 4%; right: 4%; bottom: 4%; }
+.az-player-controls input[type=range] { appearance: none; -webkit-appearance: none; height: 5px; border-radius: 5px; cursor: pointer; accent-color: #ff640a; }
+.az-player-controls input[type=range]::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%; background: #ff640a; box-shadow: 0 0 0 4px #ff640a22; }
+.az-player-controls input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border: 0; border-radius: 50%; background: #ff640a; }
+.az-player-timeline { display: block; width: 100%; margin: 12px 0; touch-action: none; }
+.az-player-toolbar { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.az-player-toolbar button, .az-player-toolbar a { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border-radius: 8px; background: transparent; border: 0; }
+.az-player-toolbar button:hover, .az-player-toolbar a:hover { background: #ffffff22; }
+.az-player-toolbar svg { width: 21px; height: 21px; stroke-width: 1.7; }
+.az-player-time { font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.az-player-time span { color: #ffffff99; }
+.az-player-volume { width: 70px; background: #ffffff55; }
+.az-player-spacer { flex: 1; }
+.az-player-settings { position: absolute; right: 4%; bottom: 21%; width: min(290px, 85%); max-height: 67%; overflow: auto; padding: 14px; background: #15161df5; border: 1px solid #ffffff20; border-radius: 14px; box-shadow: 0 12px 48px #0008; font-size: 13px; }
+.az-player-settings > div { display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid #ffffff13; }
+.az-player-settings button { padding: 5px; border-radius: 6px; }
+.az-player-settings label { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; color: #ceced4; }
+.az-player-settings select { min-width: 105px; max-width: 65%; color: #fff; border: 1px solid #ffffff24; background: #24252d; border-radius: 6px; padding: 7px; }
+.az-player-loading, .az-player-error { position: absolute; top: 32%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+.az-player-loading { color: #ff640a; }
+.az-player-error { top: 25%; width: 80%; text-align: center; font-size: 13px; background: #000b; padding: 8px; border-radius: 8px; }
+.az-player-notice { position: absolute; top: 23%; left: 10%; right: 10%; background: #171820; padding: 10px; border-radius: 8px; font-size: 12px; }
+@container (max-width: 520px) {
+  .az-player-heading { top: 5%; gap: 3px; }
+  .az-player-heading span { font-size: 7px; }
+  .az-player-center { top: 47%; }
+  .az-player-center button { width: 40px; height: 40px; }
+  .az-player-center button span { top: 15px; }
+  .az-player-center svg { width: 30px; height: 30px; }
+  .az-player-volume, .az-player-pip { display: none !important; }
+  .az-player-toolbar { gap: 4px; }
+  .az-player-toolbar button, .az-player-toolbar a { width: 32px; height: 32px; }
+  .az-player-time { font-size: 10px; }
+  .az-player-timeline { margin: 8px 0; }
+  .az-player-settings { padding: 10px; font-size: 11px; bottom: 25%; max-height: 70%; }
+}
+@media (prefers-reduced-motion: reduce) { .az-player-chrome { transition: none; } }
+
 @container (max-width: 480px) { .az-intro-idle .az-intro-caption { display: none; } }

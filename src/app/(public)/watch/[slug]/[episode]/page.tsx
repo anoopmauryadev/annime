@@ -123,6 +123,8 @@ export default async function WatchPage({
               servers={servers}
               animeId={anime.id}
               episodeId={currentEp.id}
+              title={`${anime.title} · S${seasonNum} E${epNum}${currentEp.title ? ` · ${currentEp.title}` : ""}`}
+              nextEpisodeUrl={nextEp ? `/watch/${anime.slug}/${seasonNum}x${nextEp.episode_number}` : undefined}
             />
 
             {/* Episode Title & Prev/Next / Bookmark / Report Actions Bar */}
