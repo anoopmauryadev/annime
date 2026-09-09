@@ -53,13 +53,20 @@ async function uploadFile(localFile, remotePath) {
 export async function uploadHlsDirectory(localDirectory, outputDirName) {
   requireConfiguration();
   if (!/^[a-zA-Z0-9_-]+$/.test(outputDirName)) throw new Error("Invalid HLS directory name");
-  let uploaded = 0;
+  const files = [];
   for await (const localFile of filesUnder(localDirectory)) {
     const relative = path.relative(localDirectory, localFile);
-    await uploadFile(localFile, path.join("uploads", "hls", outputDirName, relative));
-    uploaded++;
+    files.push({ localFile, remotePath: path.join("uploads", "hls", outputDirName, relative) });
   }
-  return uploaded;
+  const configuredConcurrency = Number(process.env.BUNNY_UPLOAD_CONCURRENCY || 4);
+  const concurrency = Number.isFinite(configuredConcurrency)
+    ? Math.min(10, Math.max(1, Math.floor(configuredConcurrency)))
+    : 4;
+  for (let index = 0; index < files.length; index += concurrency) {
+    await Promise.all(files.slice(index, index + concurrency).map(({ localFile, remotePath }) =>
+      uploadFile(localFile, remotePath)));
+  }
+  return files.length;
 }
 
 async function migrateAll() {
