@@ -3,4 +3,4 @@ Allow: /
 Disallow: /admin/
 Disallow: /api/
 
-Sitemap: https://animezone.in/sitemap.xml
+Sitemap: https://hindianimezone.fun/sitemap.xml

@@ -4,7 +4,7 @@ import type { MetadataRoute } from "next";
 export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://animezone.in";
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://hindianimezone.fun";
 
   // Static core routes
   const staticRoutes: MetadataRoute.Sitemap = [

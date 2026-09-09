@@ -34,7 +34,7 @@ export async function generateMetadata({
   const [sNum, eNum] = episode.split("x");
   const title = `Watch ${anime.title} Season ${sNum} Episode ${eNum} Hindi Dub & Sub | AnimeZone`;
   const description = `Stream ${anime.title} S${sNum}E${eNum} in multi-quality HD (2K, 1080p, 720p, 360p) with Hindi and original audio free.`;
-  const image = anime.poster || anime.backdrop || "https://animezone.in/og-image.jpg";
+  const image = anime.poster || anime.backdrop || "https://hindianimezone.fun/og-image.jpg";
 
   return {
     title,

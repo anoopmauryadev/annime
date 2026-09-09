@@ -17,7 +17,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const description = anime.synopsis 
     ? anime.synopsis.slice(0, 160) 
     : `Watch ${anime.title} with high quality Hindi and multi-audio dubs free on AnimeZone.`;
-  const image = anime.poster || anime.backdrop || "https://animezone.in/og-image.jpg";
+  const image = anime.poster || anime.backdrop || "https://hindianimezone.fun/og-image.jpg";
 
   return {
     title,
