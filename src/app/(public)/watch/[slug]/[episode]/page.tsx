@@ -19,6 +19,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { verifyUserToken } from "@/lib/auth";
 import { isUserKeyActive } from "@/lib/db";
+import { resolveStreamServers } from "@/lib/cdn";
 
 export const dynamic = "force-dynamic";
 
@@ -83,7 +84,7 @@ export default async function WatchPage({
 
   const session = verifyUserToken((await cookies()).get("user_token")?.value);
   const access = session ? isUserKeyActive(session.id) : null;
-  const servers = access?.active || access?.is_vip ? getServersByEpisode(currentEp.id) : [];
+  const servers = access?.active || access?.is_vip ? resolveStreamServers(getServersByEpisode(currentEp.id)) : [];
   const downloads = access?.is_vip ? getDownloadsByEpisode(currentEp.id) : [];
 
   // Prev / next episode logic

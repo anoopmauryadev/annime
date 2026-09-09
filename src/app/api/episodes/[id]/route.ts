@@ -2,6 +2,7 @@ import { getEpisodeById, getServersByEpisode, getDownloadsByEpisode } from "@/li
 import { NextResponse } from "next/server";
 import { getUserFromRequest } from "@/lib/auth";
 import { isUserKeyActive } from "@/lib/db";
+import { resolveStreamServers } from "@/lib/cdn";
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +17,7 @@ export async function GET(request: Request, ctx: RouteContext<'/api/episodes/[id
   
   const user = getUserFromRequest(request);
   const access = user ? isUserKeyActive(user.id) : null;
-  const servers = access?.active || access?.is_vip ? getServersByEpisode(id) : [];
+  const servers = access?.active || access?.is_vip ? resolveStreamServers(getServersByEpisode(id)) : [];
   const downloads = access?.is_vip ? getDownloadsByEpisode(id) : [];
   
   return NextResponse.json({ ...episode, servers, downloads });
