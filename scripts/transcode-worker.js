@@ -4,6 +4,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 
 const root = process.cwd();
+require("@next/env").loadEnvConfig(root);
 const db = new Database(path.join(root, "data", "anime.db"));
 db.pragma("journal_mode = WAL");
 db.pragma("busy_timeout = 5000");
@@ -101,6 +102,12 @@ async function processJob(job) {
     master += `#EXT-X-STREAM-INF:BANDWIDTH=${parseInt(profile.bitrate) * 1000},RESOLUTION=${profile.width}x${profile.height},NAME="${profile.name}"\n${profile.name}.m3u8\n`;
   }
   fs.writeFileSync(path.join(output, "master.m3u8"), master, "utf8");
+  if (process.env.BUNNY_STORAGE_ENABLED === "1") {
+    updateJob(job.id, { progress_text: "Uploading HLS files to Bunny Storage..." });
+    const { uploadHlsDirectory } = await import("./bunny-storage.mjs");
+    const uploaded = await uploadHlsDirectory(output, job.output_dir_name);
+    log("info", "Uploaded HLS directory to Bunny Storage", { jobId: job.id, files: uploaded });
+  }
   if (job.server_id) {
     db.prepare(`UPDATE servers SET server_name=?, server_type='direct', stream_url=? WHERE id=?`)
       .run("Multi-Quality HD (Auto / 1080p / 720p / 360p)", masterUrl, job.server_id);
