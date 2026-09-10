@@ -137,6 +137,23 @@ Check the actual VPS configuration before changing it:
 sudo nginx -T
 ```
 
+The ready-to-use snippet is `deploy/nginx-protected-media.conf`. After pulling
+this commit, copy it outside the app directory so deployments cannot change
+the active Nginx configuration accidentally:
+
+```bash
+sudo install -m 644 deploy/nginx-protected-media.conf /etc/nginx/snippets/annime-protected-media.conf
+```
+
+Back up the actual site configuration identified by `nginx -T`, then add
+`include /etc/nginx/snippets/annime-protected-media.conf;` inside its existing
+site `server` block, alongside the `/uploads/` location, not inside it. Include
+it in every server block that serves this application's uploads. Remove any
+duplicate locations for these exact media prefixes before including it. Keep
+the image alias and unrelated sites unchanged. Run `sudo nginx -t` and only
+reload after it succeeds. This changes routing, not guest/key/VIP settings.
+The local application access test does not validate the VPS Nginx config.
+
 Apply this pattern inside the existing site server block, replacing any
 conflicting media locations (keep existing unrelated configuration):
 
