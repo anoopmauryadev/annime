@@ -383,7 +383,10 @@ function EpisodeVideoPlayer({ servers: initialServers, animeId, episodeId, title
     }
   };
 
-  const server = servers && servers.length > 0 ? (servers[activeIdx] || servers[0]) : null;
+  const selectedServer = servers && servers.length > 0 ? (servers[activeIdx] || servers[0]) : null;
+  // Free Auto must never silently fall back to an HD source while low quality is processing.
+  const server = !isVip && currentLevel !== -2 && selectedServer && !/\/(master|360p|480p)\.m3u8$/.test(selectedServer.stream_url)
+    ? servers.find(s=>/\/(master|360p|480p)\.m3u8$/.test(s.stream_url)) || null : selectedServer;
 
   // Auto-extract URL if full <iframe src="..."> code is pasted
   const getEmbedSrc = (raw: string) => {
@@ -484,7 +487,9 @@ function EpisodeVideoPlayer({ servers: initialServers, animeId, episodeId, title
     }
   }, [embedSrc, isEmbed, isHls, canPlay, nativeVariant]);
 
-  const lowQualitySource = servers.find(s => /\.m3u8(?:$|\?)/i.test(s.stream_url))?.stream_url || "";
+  const highQualityServer = servers.find(s=>s.server_name.startsWith('Original Quality') || s.server_name.includes('(Original fallback)'));
+  const highQualityLabel = highQualityServer?.server_name.includes('(Original fallback)') ? highQualityServer.server_name.replace(' (Original fallback)','') : 'Original Quality';
+  const lowQualitySource = servers.find(s => /\.m3u8(?:$|\?)/i.test(s.stream_url) && !s.server_name.includes('(Original fallback)'))?.stream_url || "";
   useEffect(()=>{
     const hls=hlsRef.current;
     if(hls) {
@@ -515,12 +520,13 @@ function EpisodeVideoPlayer({ servers: initialServers, animeId, episodeId, title
 
   const handleQualityChange = (lvlIndex: number) => {
     if(lvlIndex === -2) {
-      const originalIndex=servers.findIndex(s=>s.server_name==='Original Quality (VIP)');
+      const originalIndex=servers.findIndex(s=>s===highQualityServer);
       if(!originalEnabled || originalIndex < 0) { setPlaybackToast('Original Quality is disabled or not ready.'); setTimeout(()=>setPlaybackToast(null),5000); return; }
       switchPosition.current=videoRef.current?.currentTime || 0; setNativeVariant('');setActiveIdx(originalIndex);setCurrentLevel(-2); return;
     }
     if(lvlIndex === 480 && !allow480)return;
     const lowIndex = servers.findIndex(s => s.stream_url === lowQualitySource);
+    if(lvlIndex === -1 && lowIndex < 0 && !isVip) {setNativeVariant('');setCurrentLevel(-1);return;}
     if (lowIndex < 0 || (lvlIndex !== -1 && !qualityLevels.some(q => q.height === lvlIndex))) return;
     const hlsLevel = hlsRef.current?.levels.findIndex(level => level.height === lvlIndex) ?? -1;
     if (activeIdx === lowIndex && !nativeVariant && hlsRef.current && (lvlIndex === -1 || hlsLevel >= 0)) {
@@ -537,16 +543,18 @@ function EpisodeVideoPlayer({ servers: initialServers, animeId, episodeId, title
 
   const currentQualityLabel = () => {
     if (currentLevel === -1) return "Auto";
-    if (currentLevel === -2) return "Original Quality (VIP)";
+    if (currentLevel === -2) return highQualityLabel;
     const found = qualityLevels.find((q) => q.index === currentLevel);
     return found ? found.name : "Auto";
   };
 
-  if ((!servers || servers.length === 0) && !isLoading && canPlay && !keyAccess.isLoading) {
+  if ((!server || servers.length === 0) && !isLoading && canPlay && !keyAccess.isLoading) {
     return (
       <div className="aspect-video w-full bg-black flex flex-col items-center justify-center text-gray-500 rounded-xl">
         <MonitorPlay size={48} className="mb-4 opacity-50" />
         <p>Video is being prepared. 360p will appear here as soon as it is ready.</p>
+        {originalEnabled && highQualityServer && <button type="button" className="mt-4 rounded-lg bg-orange-600 px-4 py-2 text-white" onClick={()=>handleQualityChange(-2)}>Choose {highQualityLabel}</button>}
+        {!isVip && !originalEnabled && <span className="mt-4 text-amber-400">🔒 HD / Original — VIP required</span>}
       </div>
     );
   }
@@ -775,7 +783,7 @@ function EpisodeVideoPlayer({ servers: initialServers, animeId, episodeId, title
             </video>
 
             {introPhase === "complete" && <PlayerControls key={embedSrc} videoRef={videoRef} containerRef={playerRef} hlsRef={hlsRef}
-              qualities={[...qualityLevels.filter(q=>allow480||q.height!==480), ...(originalEnabled ? [{index:-2,height:0,name:isVip ? "Original Quality (VIP)" : "Original Quality"}] : [])]} quality={currentLevel} onQuality={handleQualityChange} onPlay={requestPlayback}
+              qualities={[...qualityLevels.filter(q=>q.height<=480 && (allow480||q.height!==480)), ...(originalEnabled && highQualityServer ? [{index:-2,name:highQualityLabel}] : !isVip && !originalEnabled ? [{index:-2,name:'🔒 HD / Original — VIP required',locked:true}] : [])]} quality={currentLevel} onQuality={handleQualityChange} onPlay={requestPlayback}
               title={title} nextEpisodeUrl={nextEpisodeUrl} />}
             <PlaybackAnalytics videoRef={videoRef} episodeId={episodeId} enabled={canPlay && introPhase === 'complete'} source={embedSrc} />
 
@@ -873,7 +881,7 @@ function EpisodeVideoPlayer({ servers: initialServers, animeId, episodeId, title
             canPlay ? (
               <button
                 key={srv.id || idx}
-                onClick={() => { switchPosition.current=videoRef.current?.currentTime || 0; setNativeVariant('');setActiveIdx(idx); }}
+                onClick={() => { switchPosition.current=videoRef.current?.currentTime || 0; setNativeVariant('');setActiveIdx(idx);setCurrentLevel(srv.server_name.startsWith('Original Quality') || srv.server_name.includes('(Original fallback)') ? -2 : -1); }}
                 className={`px-3 py-1.5 text-xs sm:text-sm font-bold rounded transition-colors flex items-center gap-1.5
                   ${
                     activeIdx === idx
@@ -964,7 +972,7 @@ function EpisodeVideoPlayer({ servers: initialServers, animeId, episodeId, title
                       {currentLevel === -1 && <Check size={14} className="text-[#ff640a]" />}
                     </button>
 
-                    {qualityLevels.filter(q=>allow480||q.height!==480).map((lvl) => (
+                    {qualityLevels.filter(q=>q.height<=480 && (allow480||q.height!==480)).map((lvl) => (
                       <button
                         key={lvl.index}
                         onClick={() => handleQualityChange(lvl.index)}
@@ -978,6 +986,8 @@ function EpisodeVideoPlayer({ servers: initialServers, animeId, episodeId, title
                         {currentLevel === lvl.index && <Check size={14} className="text-[#ff640a]" />}
                       </button>
                     ))}
+                    {!isVip && !originalEnabled && <button type="button" disabled className="w-full text-left px-3.5 py-2 text-xs font-bold text-amber-400">🔒 HD / Original — VIP required</button>}
+                    {originalEnabled && highQualityServer && <button type="button" onClick={()=>handleQualityChange(-2)} className="w-full text-left px-3.5 py-2 text-xs font-bold text-gray-300">{highQualityLabel}</button>}
                   </div>
                 )}
               </div>

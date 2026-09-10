@@ -18,6 +18,9 @@ export async function POST(request: Request) {
   let transcodingEnabled = false;
   try {
     const formData = await request.formData();
+    const {uploadQuality}=await import('@/lib/uploadQuality');
+    const quality=uploadQuality(formData);
+    if(!quality)return NextResponse.json({error:'Invalid quality selection'},{status:400});
     const videoFile = formData.get("video") as File | null;
     const uploadedVideoUrl = formData.get("video_url") as string | null;
     const episodeId = formData.get("episode_id") ? parseInt(formData.get("episode_id") as string) : null;
@@ -45,6 +48,10 @@ export async function POST(request: Request) {
 
     let serverId = null;
     if (episodeId) {
+      if(formData.has('display_quality')) {
+        const {updateEpisode}=await import('@/lib/db');
+        updateEpisode(episodeId,{display_quality:quality.displayQuality});
+      }
       serverId = createServer({
         episode_id: episodeId,
         server_name: serverName,
@@ -83,6 +90,7 @@ export async function POST(request: Request) {
     if (transcodingEnabled) {
         startHlsTranscoding({
           inputPath: absoluteVideoPath,
+          sourceQuality: quality.sourceQuality,
           outputDirName,
           serverId,
         }).catch((err) => {

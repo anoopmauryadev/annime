@@ -29,6 +29,9 @@ export async function POST(req: Request) {
 
   try {
     const formData = await req.formData();
+    const {uploadQuality}=await import('@/lib/uploadQuality');
+    const quality=uploadQuality(formData);
+    if(!quality)return NextResponse.json({error:'Invalid quality selection'},{status:400});
     const data: any = {};
     const keys = ['title', 'type', 'synopsis', 'year', 'rating', 'status', 'quality', 'priority'];
     keys.forEach(k => { if (formData.has(k)) data[k] = formData.get(k); });
@@ -70,6 +73,7 @@ export async function POST(req: Request) {
         season_id: seasonId,
         episode_number: 1,
         title: epTitle,
+        display_quality: quality.displayQuality,
         thumbnail: data.thumbnail || data.poster || '',
         duration: (formData.get('duration') as string) || '',
       });
@@ -117,6 +121,7 @@ export async function POST(req: Request) {
           const outputDirName = `ep_${epId}_${Date.now()}`;
           startHlsTranscoding({
             inputPath: absoluteVideoPath,
+            sourceQuality: quality.sourceQuality,
             outputDirName,
             serverId,
           }).catch((err) => {

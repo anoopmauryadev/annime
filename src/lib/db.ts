@@ -246,6 +246,9 @@ function initializeDatabase(db: Database.Database) {
   addTranscodeColumn("output_dir_name", "TEXT");
   addTranscodeColumn("master_url", "TEXT");
   addTranscodeColumn("attempts", "INTEGER NOT NULL DEFAULT 0");
+  addTranscodeColumn("source_quality", "INTEGER NOT NULL DEFAULT 0");
+  const episodeColumns = db.prepare('PRAGMA table_info(episodes)').all() as {name:string}[];
+  if (!episodeColumns.some(column=>column.name==='display_quality')) db.exec("ALTER TABLE episodes ADD COLUMN display_quality TEXT NOT NULL DEFAULT ''");
 
   const adminColumns = db.prepare("PRAGMA table_info(admin_users)").all() as { name: string }[];
   if (!adminColumns.some((column) => column.name === "session_version")) {
@@ -578,6 +581,7 @@ export interface SeasonRow {
 }
 
 export interface EpisodeRow {
+  display_quality: string;
   id: number;
   anime_id: number;
   season_id: number;
@@ -845,11 +849,12 @@ export function createEpisode(data: {
   title: string;
   thumbnail?: string;
   duration?: string;
+  display_quality?: string;
 }): number {
   const result = getDb()
     .prepare(
-      `INSERT INTO episodes (anime_id, season_id, episode_number, title, thumbnail, duration)
-       VALUES (@anime_id, @season_id, @episode_number, @title, @thumbnail, @duration)`
+      `INSERT INTO episodes (anime_id, season_id, episode_number, title, thumbnail, duration, display_quality)
+       VALUES (@anime_id, @season_id, @episode_number, @title, @thumbnail, @duration, @display_quality)`
     )
     .run({
       anime_id: data.anime_id,
@@ -858,16 +863,18 @@ export function createEpisode(data: {
       title: data.title,
       thumbnail: data.thumbnail || "",
       duration: data.duration || "",
+      display_quality: data.display_quality || "",
     });
   return result.lastInsertRowid as number;
 }
 
 export function updateEpisode(
   id: number,
-  data: { title?: string; thumbnail?: string; duration?: string }
+  data: { title?: string; thumbnail?: string; duration?: string; display_quality?: string }
 ): void {
   const fields: string[] = [];
   const params: Record<string, unknown> = { id };
+  if (data.display_quality !== undefined) { fields.push('display_quality = @display_quality'); params.display_quality = data.display_quality; }
   if (data.title !== undefined) { fields.push("title = @title"); params.title = data.title; }
   if (data.thumbnail !== undefined) { fields.push("thumbnail = @thumbnail"); params.thumbnail = data.thumbnail; }
   if (data.duration !== undefined) { fields.push("duration = @duration"); params.duration = data.duration; }
@@ -1246,6 +1253,7 @@ export function resolveReport(id: number) {
 // ---- Transcode Jobs ----
 
 export function createTranscodeJob(data: {
+  source_quality?: number;
   episode_id?: number | null;
   server_id?: number | null;
   status?: string;
@@ -1258,8 +1266,8 @@ export function createTranscodeJob(data: {
   const res = db
     .prepare(
       `INSERT INTO transcode_jobs
-       (episode_id, server_id, status, progress_text, input_path, output_dir_name, master_url)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+       (episode_id, server_id, status, progress_text, input_path, output_dir_name, master_url, source_quality)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       data.episode_id || null,
@@ -1269,6 +1277,7 @@ export function createTranscodeJob(data: {
       data.input_path || null,
       data.output_dir_name || null,
       data.master_url || null,
+      data.source_quality || 0,
     );
   return res.lastInsertRowid as number;
 }

@@ -26,7 +26,7 @@ export function playbackAccess(request: Request, episodeId?: number) {
   const expires_at = member?.active ? member.expires_at : guest?.expires_at || null;
   return { user, active, is_vip: !!member?.is_vip, login_required, guest_mode,
     allow_480p: !!member?.is_vip || settings.free_480p_enabled !== "0",
-    original_enabled: settings.vip_original_enabled !== "0" && (settings.free_original_enabled !== "0" || !!member?.is_vip),
+    original_enabled: member?.is_vip ? settings.vip_original_enabled !== "0" : settings.free_original_enabled === "1",
     can_play: active && (!login_required || !!user), key_system_disabled: settings.key_system_enabled === "0",
     expires_at, remaining_hours: expires_at ? Math.max(0, Math.ceil((Date.parse(expires_at.replace(" ", "T") + (expires_at.endsWith("Z") ? "" : "Z"))-Date.now())/3600000)) : 0 };
 }
@@ -74,10 +74,13 @@ export function mediaExists(url: string) {
 }
 export function playbackServers(episodeId: number, access: ReturnType<typeof playbackAccess>) {
   if (!access.can_play) return [];
-  const result = getServersByEpisode(episodeId).flatMap(server => {
+  const episodeServers = getServersByEpisode(episodeId);
+  const result = episodeServers.flatMap(server => {
     const url = localMediaUrl(server.stream_url);
     if (url.startsWith("/uploads/hls/") && /\.m3u8$/i.test(url)) {
       const master = url.replace(/[^/]+$/, 'master.m3u8');
+      const hasLow = ['360p.m3u8', ...(access.allow_480p ? ['480p.m3u8'] : [])].some(name=>mediaExists(url.replace(/[^/]+$/,name)));
+      if (!hasLow) return [];
       const playable = mediaExists(master) ? master : url;
       if (!access.is_vip && !/\/(master|360p|480p)\.m3u8$/.test(playable)) return [];
       if (!access.allow_480p && playable.endsWith('/480p.m3u8')) return [];
@@ -87,10 +90,9 @@ export function playbackServers(episodeId: number, access: ReturnType<typeof pla
     if (!access.original_enabled) return [];
     if (url.startsWith("/uploads/videos/")) {
       // Only expose a verified original derivative after its conversion has finished.
-      const prepared = getDb().prepare("SELECT output_dir_name FROM transcode_jobs WHERE server_id=? ORDER BY id DESC LIMIT 1").get(server.id) as {output_dir_name:string} | undefined;
-      if(prepared) return [];
+      // A queued transcode job must not hide the uploaded browser-playable source.
       // With transcoding OFF no conversion is promised; browser-native MP4/WebM only.
-      return /\.(mp4|webm)$/i.test(url) && mediaExists(url) ? [{...server,stream_url:url,server_name:"Original Quality (VIP)"}] : [];
+      return /\.(mp4|webm)$/i.test(url) && mediaExists(url) ? [{...server,stream_url:url,server_name:access.is_vip ? "Original Quality (VIP)" : "Original Quality"}] : [];
     }
     return [{...server,stream_url:url}];
   });
@@ -98,6 +100,23 @@ export function playbackServers(episodeId: number, access: ReturnType<typeof pla
     const jobs = getDb().prepare(`SELECT j.output_dir_name FROM transcode_jobs j JOIN servers s ON s.id=j.server_id WHERE s.episode_id=? ORDER BY j.id DESC`).all(episodeId) as {output_dir_name:string}[];
     const original = jobs.map(j=>`/uploads/hls/${j.output_dir_name}/original.mp4`).find(mediaExists);
     if (original) result.push({id:-episodeId,episode_id:episodeId,server_name:"Original Quality (VIP)",server_type:"direct",stream_url:original,server_order:99});
+    else if (!result.some(s=>s.server_name.startsWith('Original Quality'))) {
+      const folders = [...new Set([
+        ...episodeServers.map(s=>localMediaUrl(s.stream_url)).filter(url=>url.startsWith('/uploads/hls/')).map(url=>url.replace(/[^/]+$/,'')),
+        ...jobs.map(j=>`/uploads/hls/${j.output_dir_name}/`),
+      ])];
+      for (const quality of [720,1080]) {
+        const fallback=folders.map(folder=>folder+quality+'p.m3u8').find(url=>{
+          if(!mediaExists(url))return false;
+          const contents=fs.readFileSync(path.join(process.cwd(),'public',url),'utf8');
+          return contents.startsWith('#EXTM3U') && contents.includes('#EXT-X-ENDLIST');
+        });
+        if(fallback) {
+          result.push({id:-episodeId,episode_id:episodeId,server_name:`${quality}p HD (Original fallback)`,server_type:'direct',stream_url:fallback,server_order:99});
+          break;
+        }
+      }
+    }
   }
   return result;
 }

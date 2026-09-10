@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { UploadCloud, X, Video, Film, CheckCircle2 } from 'lucide-react';
 import { adminFetch } from '@/lib/adminApi';
+import UploadQualityFields from '@/components/UploadQualityFields';
 
 const GENRES = ["Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror", "Romance", "Sci-Fi", "School", "Shounen", "Slice of Life", "Sports", "Supernatural", "Thriller"];
 const LANGUAGES = ["Hindi", "English", "Japanese", "Tamil", "Telugu"];
@@ -15,7 +16,7 @@ export default function NewAnimePage() {
   
   const [formData, setFormData] = useState({
     title: '', type: 'series', synopsis: '', year: 2024, rating: '', status: 'ongoing', quality: 'HD',
-    priority: 0, is_spotlight: false, duration: '', server_name: 'Server 1 - Main', stream_url: ''
+    priority: 0, is_spotlight: false, duration: '', server_name: 'Server 1 - Main', stream_url: '', source_quality:'0', display_quality:''
   });
   const [languages, setLanguages] = useState<string[]>(['Hindi', 'English']);
   const [genres, setGenres] = useState<string[]>(['Action', 'Adventure']);
@@ -294,6 +295,7 @@ export default function NewAnimePage() {
           </div>
         </div>
 
+        <UploadQualityFields source={formData.source_quality} display={formData.display_quality} onSource={value=>setFormData({...formData,source_quality:value})} onDisplay={value=>setFormData({...formData,display_quality:value})} />
         {/* Audio Languages */}
         <div>
           <label className="block text-sm text-slate-400 mb-2">Available Audio Languages (Hindi, Tamil, Telugu, English, Jap)</label>

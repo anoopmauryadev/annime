@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation';
 import { Trash2, PlusCircle, ChevronDown, ChevronUp, UploadCloud, ArrowLeft, Server as ServerIcon, Download, Video, Film, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { adminFetch } from '@/lib/adminApi';
+import UploadQualityFields from '@/components/UploadQualityFields';
 
 interface Season { id: number; anime_id: number; season_number: number; title: string; }
 interface Episode { id: number; anime_id: number; season_id: number; episode_number: number; title: string; thumbnail: string; }
@@ -27,6 +28,10 @@ export default function EpisodesPage() {
   // Add episode form
   const [newEpNum, setNewEpNum] = useState(1);
   const [newEpTitle, setNewEpTitle] = useState('');
+  const [sourceQuality,setSourceQuality]=useState('0');
+  const [displayQuality,setDisplayQuality]=useState('');
+  const [serverSourceQuality,setServerSourceQuality]=useState('0');
+  const [serverDisplayQuality,setServerDisplayQuality]=useState('');
   const [newEpThumb, setNewEpThumb] = useState<File | null>(null);
   const [newEpVideo, setNewEpVideo] = useState<File | null>(null);
   const [newEpStreamUrl, setNewEpStreamUrl] = useState('');
@@ -159,6 +164,8 @@ export default function EpisodesPage() {
     fd.append('season_id', String(selectedSeason));
     fd.append('episode_number', String(newEpNum));
     fd.append('title', newEpTitle);
+    fd.append('source_quality',sourceQuality);
+    fd.append('display_quality',displayQuality);
     if (newEpThumb) fd.append('thumbnail', newEpThumb);
     if (preUploadedVideoUrl) fd.append('video_url', preUploadedVideoUrl);
     if (newEpStreamUrl) fd.append('stream_url', newEpStreamUrl);
@@ -224,10 +231,12 @@ export default function EpisodesPage() {
   const toggleExpand = async (eid: number) => {
     if (expandedEp === eid) { setExpandedEp(null); return; }
     setExpandedEp(eid);
+    setServerSourceQuality('0');setServerDisplayQuality('');
     try {
       const res = await adminFetch(`/api/admin/episodes/${eid}`);
       const data = await res.json();
       const srvs: StreamServer[] = data.servers || [];
+      setServerDisplayQuality(data.display_quality || '');
       setEpServers(srvs);
       setEpDownloads(data.downloads || []);
 
@@ -293,6 +302,8 @@ export default function EpisodesPage() {
     const fd = new FormData();
     fd.append('video_url', preUploadedVideoUrl);
     fd.append('episode_id', String(expandedEp));
+    fd.append('source_quality',serverSourceQuality);
+    fd.append('display_quality',serverDisplayQuality);
     fd.append('server_name', serverVideoName || 'Multi-Quality HD (2K/1080p/720p/360p)');
 
     try {
@@ -450,6 +461,7 @@ export default function EpisodesPage() {
               </div>
 
               {/* Video File Upload Box for Episode */}
+              <UploadQualityFields source={sourceQuality} display={displayQuality} onSource={setSourceQuality} onDisplay={setDisplayQuality} />
               <div className="p-3.5 bg-[#0f0f1a] rounded-xl border border-slate-800 space-y-2">
                 <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                   <Video size={16} className="text-violet-400" /> Upload Anime Episode Video File (.mp4, .mkv, .webm):
@@ -567,6 +579,15 @@ export default function EpisodesPage() {
                   <div className="border-t border-slate-800 p-5 space-y-5 bg-[#0f0f1a]">
                     
                     {/* 🎬 DIRECT VIDEO UPLOAD FOR THIS EPISODE */}
+                    <UploadQualityFields source={serverSourceQuality} display={serverDisplayQuality} onSource={setServerSourceQuality} onDisplay={setServerDisplayQuality} />
+                    <button type="button" className="rounded bg-slate-700 px-3 py-2 text-sm text-white" onClick={async()=>{
+                      const body=new FormData();body.set('display_quality',serverDisplayQuality);
+                      try {
+                        const response=await adminFetch(`/api/admin/episodes/${ep.id}`,{method:'PUT',body});
+                        if(!response.ok)throw new Error('Could not save quality label');
+                        await fetchEpisodes();alert('Display quality saved.');
+                      } catch {alert('Could not save display quality.');}
+                    }}>Save display quality without uploading</button>
                     <div className="p-4 bg-[#1a1a2e] rounded-xl border border-violet-500/30 space-y-3">
                       <h5 className="text-sm font-semibold text-white flex items-center gap-2">
                         <Video size={16} className="text-violet-400" /> Upload Video File to this Episode:

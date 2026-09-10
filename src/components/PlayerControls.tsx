@@ -11,7 +11,7 @@ type Props = {
   videoRef: RefObject<HTMLVideoElement | null>;
   containerRef: RefObject<HTMLDivElement | null>;
   hlsRef: RefObject<Hls | null>;
-  qualities: { index: number; name: string }[];
+  qualities: { index: number; name: string; locked?: boolean }[];
   quality: number;
   onQuality: (index: number) => void;
   onPlay: () => void;
@@ -164,7 +164,7 @@ export default function PlayerControls({ videoRef, containerRef, hlsRef, qualiti
           <label>Speed<select aria-label="Playback speed" value={media.rate} onChange={e => { videoRef.current!.playbackRate = Number(e.target.value); }}>
             {[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(speed => <option key={speed} value={speed}>{speed === 1 ? "Normal" : `${speed}×`}</option>)}
           </select></label>
-          {qualities.length > 0 && <label>Quality<select aria-label="Video quality" value={quality} onChange={e => onQuality(Number(e.target.value))}><option value={-1}>Auto</option>{qualities.map(level => <option key={level.index} value={level.index}>{level.name}</option>)}</select></label>}
+          {qualities.length > 0 && <label>Quality<select aria-label="Video quality" value={quality} onChange={e => onQuality(Number(e.target.value))}><option value={-1}>Auto</option>{qualities.map(level => <option key={level.index} value={level.index} disabled={level.locked}>{level.name}</option>)}</select></label>}
           {tracks.audio.length > 1 && <label>Audio<select aria-label="Audio language" value={tracks.audioIndex} onChange={e => selectTrack("audio", Number(e.target.value))}>{tracks.audio.map((label, i) => <option key={i} value={i}>{label}</option>)}</select></label>}
           {tracks.subtitles.length > 0 && <label>Subtitles<select aria-label="Subtitles" value={tracks.subtitleIndex} onChange={e => selectTrack("subtitles", Number(e.target.value))}><option value={-1}>Off</option>{tracks.subtitles.map((label, i) => <option key={i} value={i}>{label}</option>)}</select></label>}
         </div>}

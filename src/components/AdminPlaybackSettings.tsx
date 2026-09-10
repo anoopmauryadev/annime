@@ -25,8 +25,8 @@ export default function AdminPlaybackSettings() {
     {toggle('First 2 episodes without login',mode==='preview',mode==='all',()=>save({playback_guest_mode:mode==='preview'?'login':'preview'}),'Guests can watch the first two episodes of each anime across all seasons; subsequent episodes require login. Turn off all-episodes guest access first.')}
     <p className="mt-3 text-sm text-amber-300">Both guest switches OFF = login required for every episode.</p>
     {toggle('480p for free users',free480,false,()=>save({free_480p_enabled:free480?'0':'1'}),'OFF leaves free users with 360p. VIP members can still select prepared 480p.')}
-    {toggle('Original Quality for VIP',original,false,()=>save({vip_original_enabled:original?'0':'1'}),'Controls Original playback availability. It does not delete files or change the separate VIP download feature.')}
-    {toggle('Original Quality for free users',freeOriginal,false,()=>save({free_original_enabled:freeOriginal?'0':'1'}),'Allows non-VIP users to play the uploaded 720p/1080p Original file. Keep OFF to require VIP.')}
+    {toggle('Original Quality for VIP',original,false,()=>save({vip_original_enabled:original?'0':'1'}),'Allows VIP Original playback, or ready 720p/1080p when Original is unavailable. Downloads have separate controls.')}
+    {toggle('Original Quality for free users',freeOriginal,false,()=>save({free_original_enabled:freeOriginal?'0':'1'}),'Allows free users Original playback, or ready 720p/1080p when Original is unavailable. Key and login rules still apply. Independent of the VIP switch.')}
     {message&&<p role="status" className="mt-3 text-sm text-violet-300">{message}</p>}
   </section>;
 }

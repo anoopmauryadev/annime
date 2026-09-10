@@ -15,6 +15,7 @@ for (const [name, definition] of [
   ["output_dir_name", "TEXT"],
   ["master_url", "TEXT"],
   ["attempts", "INTEGER NOT NULL DEFAULT 0"],
+  ["source_quality", "INTEGER NOT NULL DEFAULT 0"],
 ]) {
   if (!jobColumns.includes(name)) db.exec(`ALTER TABLE transcode_jobs ADD COLUMN ${name} ${definition}`);
 }
@@ -73,11 +74,13 @@ function safeJobPaths(job) {
 
 function runFfmpeg(args) {
   return new Promise((resolve, reject) => {
-    const proc = spawn("nice", ["-n", "10", "ffmpeg", ...args], { stdio: "ignore" });
+    const proc = spawn("nice", ["-n", "10", "ffmpeg", '-hide_banner', '-loglevel', 'error', ...args], { stdio: ['ignore','ignore','pipe'] });
+    let errorTail='';
+    proc.stderr.on('data',chunk=>{errorTail=(errorTail+chunk.toString()).slice(-2000);});
     activeProcess = proc;
     proc.on("close", (code) => {
       activeProcess = null;
-      code === 0 ? resolve() : reject(new Error(`FFmpeg exited with code ${code}`));
+      code === 0 ? resolve() : reject(new Error(`FFmpeg exited with code ${code}: ${errorTail.trim()}`));
     });
     proc.on("error", (error) => {
       activeProcess = null;
@@ -89,7 +92,7 @@ function runFfmpeg(args) {
 async function processJob(job) {
   const { input, output } = safeJobPaths(job);
   const masterUrl = job.master_url || `/uploads/hls/${job.output_dir_name}/master.m3u8`;
-  const completed = await processMedia({input,output,threads,
+  const completed = await processMedia({input,output,threads,sourceQuality:job.source_quality || 0,
     run: args => { if(stopping) throw new Error('Worker stopped'); return runFfmpeg(args); },
     progress: text => updateJob(job.id,{progress_text:text}),
     publish: () => {
@@ -108,6 +111,7 @@ async function processJob(job) {
 }
 
 async function main() {
+  db.prepare("UPDATE transcode_jobs SET status='failed',progress_text='Retry limit reached; inspect error before manual repair',updated_at=datetime('now') WHERE status IN ('processing','pending') AND attempts>=3").run();
   // A processing row means the previous worker exited before finishing it.
   db.prepare(`UPDATE transcode_jobs SET status='pending', progress_text='Recovered after worker restart',
     updated_at=datetime('now') WHERE status='processing' AND attempts < 3`).run();

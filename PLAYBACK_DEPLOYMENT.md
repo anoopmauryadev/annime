@@ -57,6 +57,29 @@ to contribute to the existing counter; this is a visit counter, not unique viewe
 
 ## Transcoding
 
+Upload forms now separate **Source quality** (Auto/360p/480p/720p/1080p) from
+**Display quality** (a public badge, or no label). The source choice is stored
+with each queued job; the display label is saved per episode and can be edited
+without another upload. Anime's existing card badge remains separate.
+
+With auto-transcoding ON, a selected source is prepared first at its actual
+resolution. Compatible H.264 video is stream-copied to HLS; AAC audio is also
+copied. Unsupported codecs are converted once at source resolution for browser
+playback. Lower 360p/480p variants are then generated if below the selected
+resolution; a 360p upload is not upscaled to 480p. Original MP4 reuses the
+prepared source streams. A wrong source-height selection fails the job rather
+than labelling HD as low quality; choose Auto for cropped/unknown resolutions.
+Remuxed segment lengths follow existing keyframes and may exceed four seconds.
+Auto-transcoding OFF still queues nothing. These changes do not reprocess old
+uploads or retrofit source selections into previous jobs.
+
+Original access switches independently control VIP and free viewers. When a
+playable Original is unavailable, a completed existing 720p HLS rendition is
+offered, or 1080p if 720p is unavailable. This does not create new HD renditions.
+Free Auto stays on 360p/480p (360p only when free 480p is OFF). If neither is
+ready, it waits and offers an explicit HD choice only when free Original is ON.
+HD is never automatically substituted for free Auto.
+
 New uploads with auto-transcoding ON are processed sequentially: 360p, 480p,
 then Original Quality MP4. Each finished low-quality rendition is published
 immediately. The player checks for newly available renditions every 10 seconds.
@@ -136,6 +159,37 @@ the app does not delete or protect those historical CDN copies. Disable that
 Pull Zone separately if it should no longer serve them.
 
 ## Verification
+
+## Repair old uploads and missing 360p/480p
+
+After deploying this version, preview missing renditions (no queue changes):
+
+```bash
+cd /var/www/annime
+node scripts/repair-transcodes.cjs
+```
+
+To apply the reviewed repair list, stop the worker and back up first:
+
+```bash
+pm2 stop annime-transcoder &&
+npm run backup &&
+node scripts/repair-transcodes.cjs --apply &&
+TRANSCODE_THREADS=2 pm2 restart annime-transcoder --update-env &&
+pm2 save
+```
+
+The repair includes HLS servers whose old jobs were marked complete but lack
+360p/480p. It reuses the same output folder and resets retries only for affected
+jobs. A completed playlist with missing segments is repaired too. Valid finished
+renditions remain untouched. Source files below 480p are not upscaled. Missing
+or ambiguous originals are reported for manual mapping. No videos are deleted.
+This explicit command can enqueue uploads originally made with transcoding OFF.
+It refuses to apply while a worker lock belongs to a running process.
+
+For unexplained delays, collect `pm2 logs annime-transcoder --lines 80 --nostream`
+and the repair preview. FFmpeg errors are now retained in worker logs/job errors;
+an exhausted retry count is reported as failed rather than left processing.
 
 ```bash
 npm run build

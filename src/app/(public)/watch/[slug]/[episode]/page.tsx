@@ -121,6 +121,7 @@ export default async function WatchPage({
           {/* Main Video Player Column */}
           <div className="lg:col-span-3 flex flex-col gap-5">
             {/* Video Player Box with History tracking */}
+            {currentEp.display_quality && <span className="self-start rounded bg-white/10 px-3 py-1 text-sm text-white">{currentEp.display_quality}</span>}
             <VideoPlayer
               servers={servers}
               animeId={anime.id}

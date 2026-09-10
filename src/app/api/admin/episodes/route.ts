@@ -28,6 +28,9 @@ export async function POST(request: Request) {
 
   try {
     const formData = await request.formData();
+    const {uploadQuality}=await import('@/lib/uploadQuality');
+    const quality=uploadQuality(formData);
+    if(!quality)return NextResponse.json({error:'Invalid quality selection'},{status:400});
     const anime_id = parseInt(formData.get("anime_id") as string);
     const season_id = parseInt(formData.get("season_id") as string);
     const episode_number = parseInt(formData.get("episode_number") as string);
@@ -41,7 +44,7 @@ export async function POST(request: Request) {
     }
     
     // Create the episode
-    const epId = createEpisode({ anime_id, season_id, episode_number, title, duration, thumbnail });
+    const epId = createEpisode({ anime_id, season_id, episode_number, title, duration, thumbnail, display_quality:quality.displayQuality });
 
     // Check if a direct anime video file or pre-uploaded video_url was provided
     const videoFile = formData.get("video") as File | null;
@@ -75,6 +78,7 @@ export async function POST(request: Request) {
         const outputDirName = `ep_${epId}_${Date.now()}`;
         startHlsTranscoding({
           inputPath: absoluteVideoPath,
+          sourceQuality: quality.sourceQuality,
           outputDirName,
           serverId,
         }).catch((err) => {

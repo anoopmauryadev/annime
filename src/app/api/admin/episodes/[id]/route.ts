@@ -36,6 +36,12 @@ export async function PUT(request: Request, ctx: RouteContext<'/api/admin/episod
     const formData = await request.formData();
     
     const data: any = {};
+    if(formData.has('display_quality')) {
+      const {uploadQuality}=await import('@/lib/uploadQuality');
+      const quality=uploadQuality(formData);
+      if(!quality)return NextResponse.json({error:'Invalid display quality'},{status:400});
+      data.display_quality=quality.displayQuality;
+    }
     if (formData.has("title")) data.title = formData.get("title") as string;
     if (formData.has("duration")) data.duration = formData.get("duration") as string;
     
