@@ -516,7 +516,7 @@ function EpisodeVideoPlayer({ servers: initialServers, animeId, episodeId, title
   const handleQualityChange = (lvlIndex: number) => {
     if(lvlIndex === -2) {
       const originalIndex=servers.findIndex(s=>s.server_name==='Original Quality (VIP)');
-      if(!originalEnabled || !isVip || originalIndex < 0) { setPlaybackToast('Original Quality requires VIP login and a ready video.'); setTimeout(()=>setPlaybackToast(null),5000); return; }
+      if(!originalEnabled || originalIndex < 0) { setPlaybackToast('Original Quality is disabled or not ready.'); setTimeout(()=>setPlaybackToast(null),5000); return; }
       switchPosition.current=videoRef.current?.currentTime || 0; setNativeVariant('');setActiveIdx(originalIndex);setCurrentLevel(-2); return;
     }
     if(lvlIndex === 480 && !allow480)return;
@@ -775,7 +775,7 @@ function EpisodeVideoPlayer({ servers: initialServers, animeId, episodeId, title
             </video>
 
             {introPhase === "complete" && <PlayerControls key={embedSrc} videoRef={videoRef} containerRef={playerRef} hlsRef={hlsRef}
-              qualities={[...qualityLevels.filter(q=>allow480||q.height!==480), ...(originalEnabled ? [{index:-2,height:0,name:isVip ? "Original Quality (VIP)" : "Original Quality — VIP required"}] : [])]} quality={currentLevel} onQuality={handleQualityChange} onPlay={requestPlayback}
+              qualities={[...qualityLevels.filter(q=>allow480||q.height!==480), ...(originalEnabled ? [{index:-2,height:0,name:isVip ? "Original Quality (VIP)" : "Original Quality"}] : [])]} quality={currentLevel} onQuality={handleQualityChange} onPlay={requestPlayback}
               title={title} nextEpisodeUrl={nextEpisodeUrl} />}
             <PlaybackAnalytics videoRef={videoRef} episodeId={episodeId} enabled={canPlay && introPhase === 'complete'} source={embedSrc} />
 

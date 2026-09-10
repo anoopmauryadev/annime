@@ -281,6 +281,7 @@ function initializeDatabase(db: Database.Database) {
     playback_login_required: "1",
     free_480p_enabled: "1",
     vip_original_enabled: "1",
+    free_original_enabled: "0",
     bunny_playback_enabled: "0",
     shortener_provider: "gplinks",
     shortener_api_url: "https://gplinks.in/api",

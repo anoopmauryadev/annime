@@ -26,7 +26,7 @@ export function playbackAccess(request: Request, episodeId?: number) {
   const expires_at = member?.active ? member.expires_at : guest?.expires_at || null;
   return { user, active, is_vip: !!member?.is_vip, login_required, guest_mode,
     allow_480p: !!member?.is_vip || settings.free_480p_enabled !== "0",
-    original_enabled: settings.vip_original_enabled !== "0",
+    original_enabled: settings.vip_original_enabled !== "0" && (settings.free_original_enabled !== "0" || !!member?.is_vip),
     can_play: active && (!login_required || !!user), key_system_disabled: settings.key_system_enabled === "0",
     expires_at, remaining_hours: expires_at ? Math.max(0, Math.ceil((Date.parse(expires_at.replace(" ", "T") + (expires_at.endsWith("Z") ? "" : "Z"))-Date.now())/3600000)) : 0 };
 }
@@ -84,7 +84,7 @@ export function playbackServers(episodeId: number, access: ReturnType<typeof pla
       return mediaExists(playable) ? [{...server, stream_url:playable, server_name:access.allow_480p?"360p / 480p":"360p"}] : [];
     }
     // Originals and external players may expose HD, so they require VIP.
-    if (!access.is_vip || !access.original_enabled) return [];
+    if (!access.original_enabled) return [];
     if (url.startsWith("/uploads/videos/")) {
       // Only expose a verified original derivative after its conversion has finished.
       const prepared = getDb().prepare("SELECT output_dir_name FROM transcode_jobs WHERE server_id=? ORDER BY id DESC LIMIT 1").get(server.id) as {output_dir_name:string} | undefined;
@@ -94,7 +94,7 @@ export function playbackServers(episodeId: number, access: ReturnType<typeof pla
     }
     return [{...server,stream_url:url}];
   });
-  if (access.is_vip && access.original_enabled) {
+  if (access.original_enabled) {
     const jobs = getDb().prepare(`SELECT j.output_dir_name FROM transcode_jobs j JOIN servers s ON s.id=j.server_id WHERE s.episode_id=? ORDER BY j.id DESC`).all(episodeId) as {output_dir_name:string}[];
     const original = jobs.map(j=>`/uploads/hls/${j.output_dir_name}/original.mp4`).find(mediaExists);
     if (original) result.push({id:-episodeId,episode_id:episodeId,server_name:"Original Quality (VIP)",server_type:"direct",stream_url:original,server_order:99});
