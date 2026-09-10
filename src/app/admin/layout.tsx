@@ -31,6 +31,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const navItems = [
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+    { name: 'Video Analytics', href: '/admin/analytics', icon: MonitorCog },
     { name: 'Anime List', href: '/admin/anime', icon: Film },
     { name: 'Add Anime', href: '/admin/anime/new', icon: PlusCircle },
     { name: 'Spotlight', href: '/admin/spotlight', icon: Star },
@@ -49,7 +50,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="p-6 border-b border-slate-800">
           <h1 className="text-xl font-bold text-violet-500">Admin Panel</h1>
         </div>
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {navItems.map((item) => (
             <Link key={item.name} href={item.href} className={`flex items-center space-x-3 p-3 rounded-lg transition-colors ${pathname === item.href ? 'bg-violet-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
               <item.icon size={20} />

@@ -1,3 +1,6 @@
+import { activateGuestKey, guestTable } from "@/lib/playbackAccess";
+import { getKeyByCode } from "@/lib/db";
+import { isSameOriginMutation } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromRequest } from "@/lib/auth";
 import { redeemAccessKey } from "@/lib/db";
@@ -7,14 +10,8 @@ import { rateLimit } from "@/lib/rateLimit";
 export async function POST(request: NextRequest) {
   try {
     const user = getUserFromRequest(request);
-    if (!user) {
-      return NextResponse.json(
-        { error: "Please log in to redeem your access key." },
-        { status: 401 }
-      );
-    }
-
-    const limited = rateLimit(request, "key-redeem", 10, 15 * 60 * 1000, String(user.id));
+    if (!isSameOriginMutation(request)) return NextResponse.json({error:"Forbidden"},{status:403});
+    const limited = rateLimit(request, "key-redeem", 10, 15 * 60 * 1000, String(user?.id || "guest"));
     if (limited) return limited;
     const body = await request.json().catch(() => ({}));
     const keyCode = typeof body.key_code === "string" ? body.key_code.trim() : "";
@@ -26,7 +23,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = redeemAccessKey(keyCode, user.id);
+    const key = getKeyByCode(keyCode);
+    const guestOwned = key && guestTable().prepare("SELECT key_id FROM guest_keys WHERE key_id=?").get(key.id);
+    const result: {success:boolean;error?:string;duration_hours?:number;expires_at?:string} = key && (guestOwned || !user)
+      ? activateGuestKey(request,key.id)
+      : user ? redeemAccessKey(keyCode,user.id) : {success:false,error:"Invalid key"};
 
     if (!result.success) {
       return NextResponse.json(
@@ -38,7 +39,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: `🎉 Key redeemed! You now have ${result.duration_hours} hours of unlimited video access.`,
-      key_code: result.key_code,
       duration_hours: result.duration_hours,
       expires_at: result.expires_at,
     });

@@ -19,12 +19,20 @@ for (const [name, definition] of [
   if (!jobColumns.includes(name)) db.exec(`ALTER TABLE transcode_jobs ADD COLUMN ${name} ${definition}`);
 }
 
-const threads = Math.max(1, Number(process.env.TRANSCODE_THREADS || 2));
-const profiles = [
-  { name: "360p", width: 640, height: 360, bitrate: "800k", audioBitrate: "64k" },
-  { name: "720p", width: 1280, height: 720, bitrate: "2400k", audioBitrate: "128k" },
-  { name: "1080p", width: 1920, height: 1080, bitrate: "4800k", audioBitrate: "128k" },
-];
+const threads = Math.min(2, Math.max(1, Math.floor(Number(process.env.TRANSCODE_THREADS) || 1)));
+const { processMedia } = require('./transcode-engine.cjs');
+const once = process.argv.includes('--once');
+// One worker owns the queue, including local app fallback processes.
+const lockPath = path.join(root,'data','transcode-worker.lock');
+try {
+  try {
+    const owner=Number(fs.readFileSync(lockPath,'utf8'));
+    try { process.kill(owner,0); process.exit(0); } catch(error) { if(error.code !== 'ESRCH') throw error; }
+    fs.unlinkSync(lockPath);
+  } catch(error) { if(error.code !== 'ENOENT') throw error; }
+  fs.writeFileSync(lockPath,String(process.pid),{flag:'wx'});
+} catch(error) { if(error.code === 'EEXIST') process.exit(0); throw error; }
+process.on('exit',()=>{ try { if(fs.readFileSync(lockPath,'utf8')===String(process.pid)) fs.unlinkSync(lockPath); } catch {} });
 
 let stopping = false;
 let activeProcess = null;
@@ -65,7 +73,7 @@ function safeJobPaths(job) {
 
 function runFfmpeg(args) {
   return new Promise((resolve, reject) => {
-    const proc = spawn("ffmpeg", args, { stdio: "ignore" });
+    const proc = spawn("nice", ["-n", "10", "ffmpeg", ...args], { stdio: "ignore" });
     activeProcess = proc;
     proc.on("close", (code) => {
       activeProcess = null;
@@ -80,37 +88,20 @@ function runFfmpeg(args) {
 
 async function processJob(job) {
   const { input, output } = safeJobPaths(job);
-  const completed = [];
-  for (const profile of profiles) {
-    if (stopping) throw new Error("Worker stopped");
-    updateJob(job.id, { progress_text: `Transcoding ${profile.name} (${completed.length + 1}/${profiles.length})...` });
-    await runFfmpeg([
-      "-y", "-i", input,
-      "-vf", `scale=w=${profile.width}:h=${profile.height}:force_original_aspect_ratio=decrease,pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2`,
-      "-c:v", "libx264", "-b:v", profile.bitrate, "-maxrate", profile.bitrate,
-      "-bufsize", `${parseInt(profile.bitrate) * 1.5}k`, "-preset", "veryfast", "-threads", String(threads),
-      "-c:a", "aac", "-b:a", profile.audioBitrate, "-hls_time", "4", "-hls_playlist_type", "vod",
-      "-hls_segment_filename", path.join(output, `${profile.name}_%03d.ts`),
-      path.join(output, `${profile.name}.m3u8`),
-    ]);
-    completed.push(profile.name);
-  }
-
   const masterUrl = job.master_url || `/uploads/hls/${job.output_dir_name}/master.m3u8`;
-  let master = "#EXTM3U\n#EXT-X-VERSION:3\n";
-  for (const profile of profiles) {
-    master += `#EXT-X-STREAM-INF:BANDWIDTH=${parseInt(profile.bitrate) * 1000},RESOLUTION=${profile.width}x${profile.height},NAME="${profile.name}"\n${profile.name}.m3u8\n`;
-  }
-  fs.writeFileSync(path.join(output, "master.m3u8"), master, "utf8");
-  if (process.env.BUNNY_STORAGE_ENABLED === "1") {
-    updateJob(job.id, { progress_text: "Uploading HLS files to Bunny Storage..." });
-    const { uploadHlsDirectory } = await import("./bunny-storage.mjs");
-    const uploaded = await uploadHlsDirectory(output, job.output_dir_name);
-    log("info", "Uploaded HLS directory to Bunny Storage", { jobId: job.id, files: uploaded });
-  }
-  if (job.server_id) {
-    db.prepare(`UPDATE servers SET server_name=?, server_type='direct', stream_url=? WHERE id=?`)
-      .run("Multi-Quality HD (Auto / 1080p / 720p / 360p)", masterUrl, job.server_id);
+  const completed = await processMedia({input,output,threads,
+    run: args => { if(stopping) throw new Error('Worker stopped'); return runFfmpeg(args); },
+    progress: text => updateJob(job.id,{progress_text:text}),
+    publish: () => {
+      if(job.server_id) db.prepare("UPDATE servers SET server_name=?,server_type='direct',stream_url=? WHERE id=?")
+        .run('360p / 480p',masterUrl,job.server_id);
+    },
+  });
+  // Bunny integration is retained but explicitly disabled unless re-enabled in settings.
+  const bunny = db.prepare("SELECT value FROM site_settings WHERE key='bunny_playback_enabled'").get();
+  if (bunny?.value === '1' && process.env.BUNNY_STORAGE_ENABLED === '1') {
+    const {uploadHlsDirectory}=await import('./bunny-storage.mjs');
+    await uploadHlsDirectory(output,job.output_dir_name);
   }
   updateJob(job.id, { status: "complete", progress_text: `Done! ${completed.join(", ")} ready.` });
   log("info", "Job completed", { jobId: job.id, serverId: job.server_id });
@@ -124,6 +115,7 @@ async function main() {
   while (!stopping) {
     const job = claimNext();
     if (!job) {
+      if (once) break;
       await new Promise((resolve) => setTimeout(resolve, 2000));
       continue;
     }
@@ -131,10 +123,11 @@ async function main() {
       await processJob(job);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const retry = !stopping && job.attempts < 3;
+      const retry = stopping || job.attempts < 3;
+      if (stopping) db.prepare("UPDATE transcode_jobs SET attempts=MAX(0,attempts-1) WHERE id=?").run(job.id);
       updateJob(job.id, {
         status: retry ? "pending" : "failed",
-        progress_text: retry ? `Retry queued (${job.attempts}/3)` : "Transcoding failed",
+        progress_text: stopping ? "Paused for worker restart" : retry ? `Retry queued (${job.attempts}/3)` : "Transcoding failed",
         error: message.slice(0, 500),
       });
       log("error", "Job failed", { jobId: job.id, error: message, retry });

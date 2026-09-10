@@ -1,6 +1,7 @@
 import { getAdminStats } from "@/lib/db";
 import { requireAdminAuth } from "@/lib/auth";
 import { NextResponse } from "next/server";
+import {liveCounts} from '@/lib/videoAnalytics';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,5 @@ export async function GET(request: Request) {
   }
 
   const stats = getAdminStats();
-  return NextResponse.json(stats);
+  return NextResponse.json({...stats,...liveCounts()},{headers:{'Cache-Control':'private, no-store'}});
 }
-

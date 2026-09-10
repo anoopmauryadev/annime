@@ -87,7 +87,7 @@ try {
   }
   assert.deepEqual(failures, [], "Anonymous requests must never receive private media or temporary uploads");
   for (const headers of [{ "x-middleware-subrequest": "proxy:proxy:proxy:proxy:proxy" }, { "x-middleware-subrequest": "src/proxy:src/proxy:src/proxy:src/proxy:src/proxy" }]) {
-    assert.equal((await request("/uploads/videos/proof.mp4", { headers })).status, 401);
+    assert.equal((await request("/uploads/videos/proof.mp4", { headers })).status, 403);
   }
   assert.equal((await request("/uploads/videos/proof.mp4", { headers: userHeaders })).status, 403);
   assert.deepEqual(JSON.parse((await request(`/api/episodes/${episode.id}`)).body).servers, []);
@@ -141,7 +141,7 @@ try {
       assert.equal((await fs.stat(path.join(temporary, `data/upload-temp/${admin.id}/security-fixture.tmp`))).size, middle);
     } else {
       assert.deepEqual(await fs.readFile(path.join(temporary, "public", result.videoUrl)), episodeBytes);
-      assert.equal((await request(result.videoUrl)).status, 401);
+      assert.equal((await request(result.videoUrl)).status, 403);
     }
   }
   // Larger than Next proxy's default 10 MB: valid uploads must not be truncated.
@@ -155,7 +155,7 @@ try {
 
   const accessKey = database.createAccessKey({ duration_hours: 1 });
   assert.equal(database.redeemAccessKey(accessKey.key_code, user.id).success, true);
-  assert.equal((await request("/uploads/%76ideos/proof.mp4", { headers: { ...userHeaders, Range: "bytes=0-6" } })).status, 206);
+  assert.equal((await request("/uploads/%76ideos/proof.mp4", { headers: { ...userHeaders, Range: "bytes=0-6" } })).status, 403, "Keys no longer grant access to original files");
   for (const url of ["/api/media/downloads%2fproof.mp4", "/api/media/videos%2f..%2fdownloads%2fproof.mp4", "/api/media/temp/proof.tmp"]) {
     assert.equal((await request(url, { headers: userHeaders })).status, 400, "Encoded segments must not downgrade VIP authorization");
   }
@@ -176,7 +176,7 @@ try {
     const page = await browser.newPage();
     page.setDefaultTimeout(15000);
     await page.goto(`http://127.0.0.1:${port}${watchUrl}`);
-    await page.getByText("Sign In to Stream Episode").waitFor();
+    await page.getByText("Unlock 48 Hours of Unlimited Anime").waitFor();
     await page.context().addCookies([{ name: "user_token", value: userToken, url: `http://127.0.0.1:${port}`, httpOnly: true, sameSite: "Strict" }]);
     await page.reload();
     await page.getByText("Unlock 48 Hours of Unlimited Anime").waitFor();
@@ -204,7 +204,7 @@ try {
     await controls.getByRole("button", { name: "Playback settings", exact: true }).click();
     await controls.getByRole("combobox", { name: "Playback speed" }).selectOption("1.5");
     assert.equal(await video.evaluate(v => v.playbackRate), 1.5);
-    assert.equal(await controls.getByRole("combobox", { name: "Video quality" }).count(), 0, "Plain MP4 must not advertise invented quality levels");
+    assert.equal(await controls.getByRole("combobox", { name: "Video quality" }).count(), 1, "Original quality selector remains available for VIP MP4");
     await controls.getByRole("button", { name: "Close settings" }).click();
     await controls.focus();
     await controls.press("ArrowRight");
@@ -230,10 +230,10 @@ try {
     console.log("PASS: custom play/pause, seek bar, ±10 seconds, mute/volume, speed, keyboard, fullscreen, mobile double-tap and intro-once behavior.");
     const hlsDir = path.join(temporary, "public/uploads/hls/control-test");
     await fs.mkdir(hlsDir, { recursive: true });
-    for (const [name, size] of [["low", "160x90"], ["high", "320x180"]]) {
+    for (const [name, size] of [["360p", "640x360"], ["480p", "854x480"]]) {
       execFileSync("ffmpeg", ["-y", "-v", "error", "-f", "lavfi", "-i", `color=c=navy:s=${size}:r=30:d=8`, "-c:v", "libx264", "-preset", "ultrafast", "-g", "30", "-f", "hls", "-hls_time", "1", "-hls_list_size", "0", path.join(hlsDir, `${name}.m3u8`)]);
     }
-    await fs.writeFile(path.join(hlsDir, "master.m3u8"), '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=100000,RESOLUTION=160x90\nlow.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=300000,RESOLUTION=320x180\nhigh.m3u8\n');
+    await fs.writeFile(path.join(hlsDir, "master.m3u8"), '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360\n360p.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=1200000,RESOLUTION=854x480\n480p.m3u8\n');
     db.prepare("UPDATE servers SET stream_url=? WHERE episode_id=?").run("/uploads/hls/control-test/master.m3u8", episode.id);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.reload();
@@ -242,8 +242,8 @@ try {
     await page.waitForFunction(() => document.querySelector(".az-player-frame > video").currentTime > 0);
     await controls.getByRole("button", { name: "Playback settings", exact: true }).click();
     const quality = controls.getByRole("combobox", { name: "Video quality" });
-    await quality.selectOption("0");
-    assert.equal(await quality.inputValue(), "0");
+    await quality.selectOption("360");
+    assert.equal(await quality.inputValue(), "360");
     await quality.selectOption("-1");
     assert.equal(await quality.inputValue(), "-1");
     await video.evaluate(v => { const track = v.addTextTrack("subtitles", "Hindi", "hi"); track.addCue(new VTTCue(0, 8, "Subtitle test")); });

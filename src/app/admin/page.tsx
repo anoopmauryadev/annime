@@ -44,6 +44,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchData();
+    const timer=setInterval(()=>{adminFetch('/api/admin/stats').then(async res=>{if(res.ok)setStats(await res.json());}).catch(()=>{});},15000);
+    return ()=>clearInterval(timer);
   }, [fetchData]);
 
   const handleResolve = async (id: number) => {
@@ -69,6 +71,8 @@ export default function DashboardPage() {
   const pendingReportsCount = reports.filter((r) => r.status === 'pending').length;
 
   const statCards = [
+    { label: 'Active on site (45s)', value: Number(stats?.activeUsers || 0).toLocaleString(), icon: Users, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+    { label: 'Watching now (45s)', value: Number(stats?.watchingUsers || 0).toLocaleString(), icon: Eye, color: 'text-orange-500', bg: 'bg-orange-500/10' },
     { label: 'Total Anime', value: Number(stats?.totalAnime || 0).toLocaleString(), icon: Film, color: 'text-blue-500', bg: 'bg-blue-500/10' },
     { label: 'Total Episodes', value: Number(stats?.totalEpisodes || 0).toLocaleString(), icon: ListVideo, color: 'text-green-500', bg: 'bg-green-500/10' },
     { label: 'Total Views', value: Number(stats?.totalViews || 0).toLocaleString(), icon: Eye, color: 'text-purple-500', bg: 'bg-purple-500/10' },

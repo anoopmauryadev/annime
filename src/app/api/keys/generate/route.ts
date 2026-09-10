@@ -1,10 +1,11 @@
+import { guestId, guestTable, playbackAccess } from "@/lib/playbackAccess";
+import { isSameOriginMutation, userCookieOptions } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromRequest } from "@/lib/auth";
 import {
   createAccessKey,
   deleteAccessKey,
   getSiteSettings,
-  isUserKeyActive,
 } from "@/lib/db";
 import crypto from "crypto";
 import { rateLimit } from "@/lib/rateLimit";
@@ -12,17 +13,19 @@ import { rateLimit } from "@/lib/rateLimit";
 export async function POST(request: NextRequest) {
   try {
     const user = getUserFromRequest(request);
-    if (!user) {
-      return NextResponse.json(
-        { error: "Please log in to generate an access key." },
-        { status: 401 }
-      );
-    }
-    const limited = rateLimit(request, "key-generate", 5, 60 * 60 * 1000, String(user.id));
+    if (!isSameOriginMutation(request)) return NextResponse.json({error:"Forbidden"},{status:403});
+    const browserToken = crypto.randomBytes(32).toString("hex");
+    const browser = guestId(request) || crypto.createHash("sha256").update(browserToken).digest("hex");
+    const respond = (data: object) => {
+      const response = NextResponse.json(data);
+      if (!guestId(request)) response.cookies.set("playback_guest", browserToken, {...userCookieOptions, sameSite:"lax"});
+      return response;
+    };
+    const limited = rateLimit(request, "key-generate", 5, 60 * 60 * 1000, user ? String(user.id) : browser);
     if (limited) return limited;
 
     // 1. Check if user is already VIP
-    const currentAccess = isUserKeyActive(user.id);
+    const currentAccess = playbackAccess(request);
     if (currentAccess.is_vip) {
       return NextResponse.json({
         status: "vip",
@@ -63,10 +66,12 @@ export async function POST(request: NextRequest) {
 
     const keyRecord = createAccessKey({
       claim_token: claimToken,
-      user_id: user.id,
+      user_id: user?.id,
       duration_hours: durationHours,
       ip_address: ipAddress || undefined,
     });
+
+    if (!user) guestTable().prepare("INSERT INTO guest_keys(key_id,browser_hash) VALUES(?,?)").run(keyRecord.id,browser);
 
     // 5. Construct destination verify URL
     let origin = (settings.site_public_url || process.env.NEXT_PUBLIC_SITE_URL || "").trim();
@@ -115,7 +120,7 @@ export async function POST(request: NextRequest) {
           // Standard shortener responses (GPLinks, ShrinkMe, Droplink): { status: "success", shortenedUrl: "..." }
           const redirect = typeof data.shortenedUrl === "string" ? new URL(data.shortenedUrl) : null;
           if (redirect && (redirect.protocol === "https:" || (process.env.NODE_ENV !== "production" && redirect.protocol === "http:"))) {
-            return NextResponse.json({
+            return respond({
               success: true,
               redirect_url: redirect.href,
               provider: settings.shortener_provider || "gplinks",
@@ -136,7 +141,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Local development only: no ad provider is required.
-    return NextResponse.json({
+    return respond({
       success: true,
       redirect_url: destinationUrl,
       test_mode: true,

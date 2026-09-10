@@ -1,8 +1,6 @@
-import { getEpisodeById, getServersByEpisode, getDownloadsByEpisode } from "@/lib/db";
+import { playbackAccess, playbackServers } from "@/lib/playbackAccess";
+import { getEpisodeById, getDownloadsByEpisode } from "@/lib/db";
 import { NextResponse } from "next/server";
-import { getUserFromRequest } from "@/lib/auth";
-import { isUserKeyActive } from "@/lib/db";
-import { resolveStreamServers } from "@/lib/cdn";
 
 export const dynamic = 'force-dynamic';
 
@@ -15,10 +13,9 @@ export async function GET(request: Request, ctx: RouteContext<'/api/episodes/[id
   const episode = getEpisodeById(id);
   if (!episode) return NextResponse.json({ error: "Not found" }, { status: 404 });
   
-  const user = getUserFromRequest(request);
-  const access = user ? isUserKeyActive(user.id) : null;
-  const servers = access?.active || access?.is_vip ? resolveStreamServers(getServersByEpisode(id)) : [];
-  const downloads = access?.is_vip ? getDownloadsByEpisode(id) : [];
+  const access = playbackAccess(request, id);
+  const servers = playbackServers(id,access);
+  const downloads = access.is_vip ? getDownloadsByEpisode(id) : [];
   
-  return NextResponse.json({ ...episode, servers, downloads });
+  return NextResponse.json({ ...episode, servers, downloads }, {headers:{"Cache-Control":"private, no-store"}});
 }

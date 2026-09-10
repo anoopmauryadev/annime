@@ -48,7 +48,7 @@ function VerifyKeyContent() {
   // 1. Origin bridge: If redirected to 127.0.0.1, immediately redirect to localhost
   // so the user's session, watchlist, cookies, and local storage remain unified.
   useEffect(() => {
-    if (typeof window !== "undefined" && window.location.hostname === "127.0.0.1") {
+    if (typeof window !== "undefined" && window.location.hostname === "127.0.0.1" && window.location.port === "3000") {
       const target = window.location.href
         .replace("//127.0.0.1:3000", "//localhost:3000")
         .replace("//127.0.0.1", "//localhost");
@@ -95,7 +95,6 @@ function VerifyKeyContent() {
   // 3. Auto-Activate key once user and valid pending claim are ready
   useEffect(() => {
     if (
-      user &&
       claimToken &&
       claimData &&
       claimData.valid &&
@@ -185,11 +184,6 @@ function VerifyKeyContent() {
     const cleanKey = manualKey.trim().toUpperCase();
     if (!cleanKey) return;
 
-    if (!user) {
-      setActivateError("Please log in to your account first to redeem a key.");
-      return;
-    }
-
     setIsActivating(true);
     setActivateError(null);
 
@@ -255,7 +249,7 @@ function VerifyKeyContent() {
                 {activateSuccess.already_active ? "48-Hour Pass is Active!" : "🎉 48-Hour Pass Activated!"}
               </h2>
               <p className="text-xs text-neutral-400 mt-1">
-                Your account now has full unlocked access to all anime video players across the entire site.
+                Your key is active in this browser. You can watch 360p / 480p; sign in next if the site requires login. Original Quality requires VIP.
               </p>
             </div>
 
@@ -283,12 +277,15 @@ function VerifyKeyContent() {
             </div>
 
             <div className="pt-2">
-              <Link
-                href="/"
+              <button
+                onClick={() => {
+                  const target = sessionStorage.getItem("key_return_path") || "/";
+                  router.push(target.startsWith("/watch/") ? target : "/");
+                }}
                 className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-neutral-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition active:scale-[0.98]"
               >
                 🎬 Start Watching Anime Now <ArrowRight className="w-4 h-4" />
-              </Link>
+              </button>
             </div>
           </div>
         ) : isValidating ? (
@@ -330,7 +327,7 @@ function VerifyKeyContent() {
             )}
 
             {/* If user is NOT logged in: Provide instant inline Login / Signup */}
-            {!user ? (
+            {!user && !claimToken ? (
               <div className="bg-neutral-950/80 border border-neutral-800 rounded-xl p-5 space-y-4">
                 <div className="text-center">
                   <div className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto mb-2">

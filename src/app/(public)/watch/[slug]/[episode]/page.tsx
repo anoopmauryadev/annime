@@ -1,3 +1,4 @@
+import { playbackAccess, playbackServers } from "@/lib/playbackAccess";
 import {
   getAnimeBySlug,
   getSeasonsByAnime,
@@ -34,7 +35,7 @@ export async function generateMetadata({
 
   const [sNum, eNum] = episode.split("x");
   const title = `Watch ${anime.title} Season ${sNum} Episode ${eNum} Hindi Dub & Sub | AnimeZone`;
-  const description = `Stream ${anime.title} S${sNum}E${eNum} in multi-quality HD (2K, 1080p, 720p, 360p) with Hindi and original audio free.`;
+  const description = `Watch ${anime.title} S${sNum}E${eNum} in 360p or 480p. Original Quality is available to VIP members when ready.`;
   const image = anime.poster || anime.backdrop || "https://hindianimezone.fun/og-image.jpg";
 
   return {
@@ -82,10 +83,10 @@ export default async function WatchPage({
   );
   if (!currentEp) notFound();
 
-  const session = verifyUserToken((await cookies()).get("user_token")?.value);
-  const access = session ? isUserKeyActive(session.id) : null;
-  const servers = access?.active || access?.is_vip ? resolveStreamServers(getServersByEpisode(currentEp.id)) : [];
-  const downloads = access?.is_vip ? getDownloadsByEpisode(currentEp.id) : [];
+  const cookieStore = await cookies();
+  const access = playbackAccess(new Request("http://localhost", {headers:{cookie:cookieStore.toString()}}), currentEp.id);
+  const servers = playbackServers(currentEp.id,access);
+  const downloads = access.is_vip ? getDownloadsByEpisode(currentEp.id) : [];
 
   // Prev / next episode logic
   const seasonEpisodes = episodes.filter((e) => e.season_id === currentSeason.id);

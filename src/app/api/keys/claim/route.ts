@@ -1,3 +1,5 @@
+import { activateGuestKey, guestId, guestTable } from "@/lib/playbackAccess";
+import { isSameOriginMutation } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromRequest } from "@/lib/auth";
 import { claimAndActivateKey, getKeyByClaimToken, isUserKeyActive } from "@/lib/db";
@@ -18,6 +20,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const owner = guestTable().prepare("SELECT browser_hash FROM guest_keys WHERE key_id=?").get(key.id) as {browser_hash:string} | undefined;
+    if (owner && owner.browser_hash !== guestId(request)) return NextResponse.json({valid:false},{status:403});
+    if (key.status === "revoked") return NextResponse.json({valid:false},{status:403});
     if (key.status === "used") {
       const authUser = getUserFromRequest(request);
       const activeUserId = authUser?.id === key.used_by_user_id ? authUser.id : null;
@@ -49,6 +54,7 @@ export async function GET(request: NextRequest) {
 // POST /api/keys/claim - Claim and activate key for user
 export async function POST(request: NextRequest) {
   try {
+    if (!isSameOriginMutation(request)) return NextResponse.json({error:"Forbidden"},{status:403});
     const authUser = getUserFromRequest(request);
     const body = await request.json().catch(() => ({}));
     const claimToken = body.claim_token || request.nextUrl.searchParams.get("claim");
@@ -68,11 +74,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!authUser) {
-      return NextResponse.json(
-        { error: "Please log in to activate your access key." },
-        { status: 401 }
-      );
+    const guestOwned = guestTable().prepare("SELECT key_id FROM guest_keys WHERE key_id=?").get(key.id);
+    if (guestOwned || !authUser) {
+      const result = activateGuestKey(request,key.id);
+      return NextResponse.json(result,{status:result.success ? 200 : 403});
     }
 
     if (key.user_id && key.user_id !== authUser.id) {

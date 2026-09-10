@@ -25,6 +25,7 @@ import { useAuth } from "@/context/AuthContext";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import PlayerControls from "./PlayerControls";
+import PlaybackAnalytics from "./PlaybackAnalytics";
 
 interface QualityLevel {
   index: number;
@@ -61,12 +62,20 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   return <EpisodeVideoPlayer key={identity} {...props} />;
 }
 
-function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl }: VideoPlayerProps) {
+function EpisodeVideoPlayer({ servers: initialServers, animeId, episodeId, title, nextEpisodeUrl }: VideoPlayerProps) {
   const { user, token, isLoading } = useAuth();
   const pathname = usePathname();
+  const [servers,setServers] = useState(initialServers);
+  const [loginRequired,setLoginRequired] = useState(true);
+  const [originalEnabled,setOriginalEnabled] = useState(true);
+  const [allow480,setAllow480] = useState(true);
+  const [guestMode,setGuestMode] = useState('login');
+  const switchPosition = useRef<number | null>(null);
+
 
   const [activeIdx, setActiveIdx] = useState(0);
   const [qualityLevels, setQualityLevels] = useState<QualityLevel[]>([]);
+  const [nativeVariant,setNativeVariant] = useState('');
   const [currentLevel, setCurrentLevel] = useState<number>(-1); // -1 is Auto
   const [showQualityMenu, setShowQualityMenu] = useState(false);
 
@@ -109,12 +118,8 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
   const [manualKeyError, setManualKeyError] = useState<string | null>(null);
 
   const fetchKeyStatus = async () => {
-    if (!token && !user) {
-      setKeyAccess({ isLoading: false, active: false, is_vip: false, remaining_hours: 0, expires_at: null });
-      return;
-    }
     try {
-      const res = await fetch("/api/keys/status", {
+      const res = await fetch(`/api/keys/status${episodeId ? `?episode_id=${episodeId}` : ''}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (res.ok) {
@@ -127,7 +132,11 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
           remaining_hours: data.remaining_hours || 0,
           expires_at: data.expires_at || null,
         });
-        if (data.is_vip) setIsVip(true);
+        setLoginRequired(data.login_required !== false);
+        setOriginalEnabled(data.original_enabled !== false);
+        setAllow480(data.allow_480p !== false);
+        setGuestMode(data.guest_mode || 'login');
+        setIsVip(!!data.is_vip);
       } else {
         setKeyAccess((prev) => ({ ...prev, isLoading: false }));
       }
@@ -138,30 +147,34 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
 
   useEffect(() => {
     fetchKeyStatus();
-  }, [user, token]);
+  }, [user, token, episodeId]);
 
+  const canPlay = !isLoading && !keyAccess.isLoading && keyAccess.active && (!loginRequired || !!user);
   useEffect(() => {
-    const reloadKey = `access_reload_${episodeId || "episode"}`;
-    if (keyAccess.active && servers.length === 0 && sessionStorage.getItem(reloadKey) !== "1") {
-      sessionStorage.setItem(reloadKey, "1");
-      window.location.reload();
-    }
-    if (servers.length > 0) sessionStorage.removeItem(reloadKey);
-  }, [keyAccess.active, servers.length, episodeId]);
+    if (!episodeId || !canPlay) { setServers([]); return; }
+    let cancelled=false;
+    const refresh=async()=>{
+      try {
+        const res=await fetch(`/api/episodes/${episodeId}`,{cache:'no-store'});
+        if(res.ok) { const data=await res.json(); if(!cancelled) setServers(prev=>JSON.stringify(prev)===JSON.stringify(data.servers) ? prev : data.servers || []); }
+      } catch {}
+    };
+    refresh();
+    const timer=setInterval(refresh,10000);
+    return ()=>{cancelled=true;clearInterval(timer);};
+  },[episodeId,canPlay,isVip]);
 
   // Auto-refresh key status when user returns to this browser tab after completing shortener
   useEffect(() => {
     const handleFocus = () => {
-      if (token && !keyAccess.active) {
-        fetchKeyStatus();
-      }
+      fetchKeyStatus();
     };
     window.addEventListener("focus", handleFocus);
-    return () => window.removeEventListener("focus", handleFocus);
-  }, [token, keyAccess.active]);
+    const timer = window.setInterval(handleFocus, 30000);
+    return () => { window.removeEventListener("focus", handleFocus); window.clearInterval(timer); };
+  }, [token, keyAccess.active, episodeId]);
 
   const handleGetKey = async () => {
-    if (!user) return;
     setIsGeneratingKey(true);
     setKeyGenError(null);
     try {
@@ -174,7 +187,8 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
       });
       const data = await res.json();
       if (res.ok && data.redirect_url) {
-        window.open(data.redirect_url, "_blank", "noopener,noreferrer");
+        sessionStorage.setItem("key_return_path", pathname || "/");
+        window.location.assign(data.redirect_url);
         setPlaybackToast("⚡ Complete shortener task in the opened tab to activate your 48h key!");
         setTimeout(() => setPlaybackToast(null), 6000);
       } else if (data.status === "already_active") {
@@ -316,7 +330,7 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
   };
 
   const requestPlayback = async () => {
-    if (!user || keyAccess.isLoading || (!keyAccess.active && !keyAccess.is_vip) || introStarting || introPhase === "playing") return;
+    if (!canPlay || keyAccess.isLoading || introStarting || introPhase === "playing") return;
     if (!introPassed.current) {
       // Read again at Play so an intro uploaded in another admin tab takes effect.
       setIntroStarting(true);
@@ -390,13 +404,14 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
     } catch { return ""; }
   };
 
-  const embedSrc = server ? getEmbedSrc(server.stream_url) : "";
+  const masterSrc = server ? getEmbedSrc(server.stream_url) : "";
+  const embedSrc = nativeVariant || masterSrc;
   const isDirectVideo =
     embedSrc.endsWith(".mp4") ||
     embedSrc.endsWith(".webm") ||
     embedSrc.includes(".mp4?") ||
     embedSrc.includes("/uploads/videos/");
-  const isHls = embedSrc.includes(".m3u8") || embedSrc.includes("/hls/");
+  const isHls = /\.m3u8(?:$|\?)/i.test(embedSrc);
   const isEmbed =
     !isHls &&
     (server?.server_type === "embed" ||
@@ -405,7 +420,7 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
   // Keep the underlying video paused and embeds unmounted until the ident ends.
   // A timer also completes the intro when reduced-motion disables CSS animations.
   useEffect(() => {
-    if (introPhase !== "playing" || !user || (!keyAccess.active && !keyAccess.is_vip) || introMediaUrl) return;
+    if (introPhase !== "playing" || !canPlay || introMediaUrl) return;
     const timer = window.setTimeout(() => {
       introPassed.current = true;
       setIntroPhase("complete");
@@ -414,16 +429,13 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
       }
     }, BRAND_INTRO_DURATION);
     return () => window.clearTimeout(timer);
-  }, [introPhase, user, keyAccess.active, keyAccess.is_vip, isEmbed, embedSrc, introMediaUrl]);
+  }, [introPhase, canPlay, isEmbed, embedSrc, introMediaUrl]);
 
   // Initialize HLS when stream is .m3u8 and user has active pass
   useEffect(() => {
-    if (!user || (!keyAccess.active && !keyAccess.is_vip)) return; // Do not initialize stream if not unlocked
+    if (!canPlay) return; // Do not initialize stream if not unlocked
     const video = videoRef.current;
     if (!video || isEmbed || !embedSrc) return;
-
-    setQualityLevels([]);
-    setCurrentLevel(-1);
 
     if (hlsRef.current) {
       hlsRef.current.destroy();
@@ -433,7 +445,7 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
     if (isHls && Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: true,
+        startLevel: 0,
       });
       hlsRef.current = hls;
 
@@ -441,7 +453,7 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
-        const levels: QualityLevel[] = data.levels.map((lvl, idx) => {
+        const levels: QualityLevel[] = data.levels.map((lvl) => {
           let label = `${lvl.height}p`;
           if (lvl.height >= 1440) label = "2K (1440p)";
           else if (lvl.height >= 1080) label = "1080p Full HD";
@@ -449,15 +461,14 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
           else if (lvl.height >= 480) label = "480p";
           else if (lvl.height >= 360) label = "360p Data Saver";
           return {
-            index: idx,
+            index: lvl.height,
             height: lvl.height,
             name: label,
             bitrate: lvl.bitrate,
           };
         });
 
-        levels.sort((a, b) => b.height - a.height);
-        setQualityLevels(levels);
+        if (!nativeVariant) setQualityLevels(levels.sort((a, b) => a.height - b.height));
       });
 
       return () => {
@@ -471,27 +482,71 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
       video.src = embedSrc;
       video.load();
     }
-  }, [embedSrc, isEmbed, isHls, user, keyAccess.active, keyAccess.is_vip]);
+  }, [embedSrc, isEmbed, isHls, canPlay, nativeVariant]);
+
+  const lowQualitySource = servers.find(s => /\.m3u8(?:$|\?)/i.test(s.stream_url))?.stream_url || "";
+  useEffect(()=>{
+    const hls=hlsRef.current;
+    if(hls) {
+      const low=hls.levels.findIndex(level=>level.height<=360);
+      hls.autoLevelCapping=allow480 ? -1 : Math.max(0,low);
+      if(!allow480 && hls.currentLevel>=0 && hls.levels[hls.currentLevel]?.height>360)hls.currentLevel=Math.max(0,low);
+    }
+    if(!allow480 && nativeVariant.includes('/480p.m3u8')) {
+      switchPosition.current=videoRef.current?.currentTime||0;
+      setNativeVariant(nativeVariant.replace('/480p.m3u8','/360p.m3u8'));setCurrentLevel(360);
+    }
+  },[allow480,nativeVariant,embedSrc]);
+  useEffect(()=>{
+    if(!canPlay || !lowQualitySource) return;
+    let cancelled=false;
+    const refresh=async()=>{
+      try {
+        const response=await fetch(lowQualitySource,{cache:'no-store'});
+        if(!response.ok) return;
+        const text=await response.text();
+        const names=[...text.matchAll(/^(360p|480p)\.m3u8$/gm)].map(m=>m[1]);
+        if(!cancelled && names.length) setQualityLevels(names.map(name=>({index:parseInt(name),height:parseInt(name),name})));
+      } catch {}
+    };
+    refresh(); const timer=setInterval(refresh,10000);
+    return ()=>{cancelled=true;clearInterval(timer);};
+  },[canPlay,lowQualitySource]);
 
   const handleQualityChange = (lvlIndex: number) => {
-    if (hlsRef.current) {
-      hlsRef.current.currentLevel = lvlIndex;
-      setCurrentLevel(lvlIndex);
+    if(lvlIndex === -2) {
+      const originalIndex=servers.findIndex(s=>s.server_name==='Original Quality (VIP)');
+      if(!originalEnabled || !isVip || originalIndex < 0) { setPlaybackToast('Original Quality requires VIP login and a ready video.'); setTimeout(()=>setPlaybackToast(null),5000); return; }
+      switchPosition.current=videoRef.current?.currentTime || 0; setNativeVariant('');setActiveIdx(originalIndex);setCurrentLevel(-2); return;
     }
+    if(lvlIndex === 480 && !allow480)return;
+    const lowIndex = servers.findIndex(s => s.stream_url === lowQualitySource);
+    if (lowIndex < 0 || (lvlIndex !== -1 && !qualityLevels.some(q => q.height === lvlIndex))) return;
+    const hlsLevel = hlsRef.current?.levels.findIndex(level => level.height === lvlIndex) ?? -1;
+    if (activeIdx === lowIndex && !nativeVariant && hlsRef.current && (lvlIndex === -1 || hlsLevel >= 0)) {
+      hlsRef.current.currentLevel = lvlIndex === -1 ? -1 : hlsLevel;
+    } else {
+      switchPosition.current = videoRef.current?.currentTime || 0;
+      setActiveIdx(lowIndex);
+      // Direct rendition URLs also support native HLS and newly published 480p.
+      setNativeVariant(lvlIndex === -1 ? '' : lowQualitySource.replace(/[^/]+$/, `${lvlIndex}p.m3u8`));
+    }
+    setCurrentLevel(lvlIndex);
     setShowQualityMenu(false);
   };
 
   const currentQualityLabel = () => {
     if (currentLevel === -1) return "Auto";
+    if (currentLevel === -2) return "Original Quality (VIP)";
     const found = qualityLevels.find((q) => q.index === currentLevel);
     return found ? found.name : "Auto";
   };
 
-  if ((!servers || servers.length === 0) && !isLoading && !!user && !keyAccess.isLoading && (keyAccess.active || keyAccess.is_vip)) {
+  if ((!servers || servers.length === 0) && !isLoading && canPlay && !keyAccess.isLoading) {
     return (
       <div className="aspect-video w-full bg-black flex flex-col items-center justify-center text-gray-500 rounded-xl">
         <MonitorPlay size={48} className="mb-4 opacity-50" />
-        <p>No video servers available for this episode.</p>
+        <p>Video is being prepared. 360p will appear here as soon as it is ready.</p>
       </div>
     );
   }
@@ -506,13 +561,13 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
         className="az-player-frame aspect-video w-full bg-black relative overflow-hidden group select-none"
         onContextMenu={(e) => e.preventDefault()}
       >
-        {isLoading || (user && keyAccess.isLoading) ? (
+        {isLoading || keyAccess.isLoading ? (
           /* Checking Authentication / Pass State */
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#0a0a0f]">
             <Loader2 size={36} className="animate-spin text-[#ff640a]" />
             <p className="text-xs text-gray-400">Loading secure video player...</p>
           </div>
-        ) : !user ? (
+        ) : keyAccess.active && loginRequired && !user ? (
           /* 🔒 LOGIN REQUIRED GATE — Video will NOT load or play until user logs in */
           <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-gradient-to-b from-black/85 via-[#0d0e12]/95 to-black select-none z-20">
             <div className="absolute w-72 h-72 rounded-full bg-[#ff640a]/10 blur-3xl pointer-events-none -z-10" />
@@ -530,7 +585,7 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
             </h2>
 
             <p className="text-xs sm:text-sm text-gray-400 max-w-md mb-6 leading-relaxed">
-              Full HD streaming (2K, 1080p, 720p) with Hindi & Multi-Audio dubs is free for all registered members. Sign in or create a free account to watch now.
+              {guestMode === 'preview' ? 'The free guest preview covers the first two episodes of each anime. Sign in to watch this episode after key verification.' : 'Your key step is complete. Sign in or create an account to continue watching.'}
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-3">
@@ -696,6 +751,12 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
               }}
               playsInline
               preload="metadata"
+              onLoadedMetadata={() => {
+                if(switchPosition.current !== null && videoRef.current) {
+                  videoRef.current.currentTime=switchPosition.current; switchPosition.current=null;
+                  if(introPassed.current) videoRef.current.play().catch(()=>setNeedsPlay(true));
+                }
+              }}
               onContextMenu={(e) => e.preventDefault()}
               className="absolute inset-0 w-full h-full outline-none select-none"
               controlsList="nodownload"
@@ -714,8 +775,9 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
             </video>
 
             {introPhase === "complete" && <PlayerControls key={embedSrc} videoRef={videoRef} containerRef={playerRef} hlsRef={hlsRef}
-              qualities={qualityLevels} quality={currentLevel} onQuality={handleQualityChange} onPlay={requestPlayback}
+              qualities={[...qualityLevels.filter(q=>allow480||q.height!==480), ...(originalEnabled ? [{index:-2,height:0,name:isVip ? "Original Quality (VIP)" : "Original Quality — VIP required"}] : [])]} quality={currentLevel} onQuality={handleQualityChange} onPlay={requestPlayback}
               title={title} nextEpisodeUrl={nextEpisodeUrl} />}
+            <PlaybackAnalytics videoRef={videoRef} episodeId={episodeId} enabled={canPlay && introPhase === 'complete'} source={embedSrc} />
 
             {/* Resume Playback Prompt Banner (Overlay inside player) */}
             {introPhase !== "playing" && showResumeBanner && savedProgress && (
@@ -771,11 +833,11 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
             )}
           </>
         )}
-        {!isLoading && user && !keyAccess.isLoading && (keyAccess.active || keyAccess.is_vip) && introPhase !== "complete" && (
+        {!isLoading && canPlay && !keyAccess.isLoading && introPhase !== "complete" && (
           <BrandIntro playing={introPhase === "playing"} mediaUrl={introMediaUrl} onPlay={requestPlayback} onComplete={() => { introPassed.current = true; setIntroPhase("complete"); videoRef.current?.play().catch(() => setNeedsPlay(true)); }} />
         )}
         {introStarting && <div role="status" className="absolute inset-0 z-40 flex items-center justify-center bg-black/90 text-white text-sm">Loading player…</div>}
-        {introPhase === "complete" && needsPlay && !isEmbed && user && (keyAccess.active || keyAccess.is_vip) && (
+        {introPhase === "complete" && needsPlay && !isEmbed && canPlay && (
           <button type="button" onClick={requestPlayback} className="absolute inset-0 z-20 flex items-center justify-center gap-3 bg-black/70 text-white font-bold">
             <Play size={28} fill="currentColor" /> Tap to play video
           </button>
@@ -808,10 +870,10 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
             <MonitorPlay size={16} /> Server:
           </span>
           {servers.map((srv, idx) =>
-            user ? (
+            canPlay ? (
               <button
                 key={srv.id || idx}
-                onClick={() => setActiveIdx(idx)}
+                onClick={() => { switchPosition.current=videoRef.current?.currentTime || 0; setNativeVariant('');setActiveIdx(idx); }}
                 className={`px-3 py-1.5 text-xs sm:text-sm font-bold rounded transition-colors flex items-center gap-1.5
                   ${
                     activeIdx === idx
@@ -833,7 +895,7 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
         </div>
 
         {/* Right Side: Playback & Download Quick Actions (For Logged-In Users) */}
-        {user && (
+        {canPlay && (
           <div className="flex items-center flex-wrap gap-2">
             {/* 🔄 Start Over / Restart Button */}
             {!isEmbed && (
@@ -902,7 +964,7 @@ function EpisodeVideoPlayer({ servers, animeId, episodeId, title, nextEpisodeUrl
                       {currentLevel === -1 && <Check size={14} className="text-[#ff640a]" />}
                     </button>
 
-                    {qualityLevels.map((lvl) => (
+                    {qualityLevels.filter(q=>allow480||q.height!==480).map((lvl) => (
                       <button
                         key={lvl.index}
                         onClick={() => handleQualityChange(lvl.index)}

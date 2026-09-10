@@ -1,5 +1,4 @@
-import { getUserFromRequest } from "@/lib/auth";
-import { isUserKeyActive } from "@/lib/db";
+import { playbackAccess, mediaEpisodeId } from "@/lib/playbackAccess";
 import { createReadStream } from "fs";
 import fs from "fs/promises";
 import path from "path";
@@ -14,17 +13,19 @@ const contentTypes: Record<string, string> = {
 };
 
 export async function GET(request: Request, context: { params: Promise<{ path: string[] }> }) {
-  const user = getUserFromRequest(request);
-  if (!user) return Response.json({ error: "Login required" }, { status: 401 });
   const parts = (await context.params).path;
   if (!Array.isArray(parts) || parts.length < 2 || !["videos", "hls", "downloads"].includes(parts[0]) ||
       parts.some((part) => !part || part === "." || part === ".." || /[/\\\0]/.test(part))) {
     return Response.json({ error: "Invalid media path" }, { status: 400 });
   }
-  const membership = isUserKeyActive(user.id);
-  if (parts[0] === "downloads" ? !membership.is_vip : (!membership.active && !membership.is_vip)) {
-    return Response.json({ error: parts[0] === "downloads" ? "VIP required" : "Active key or VIP required" }, { status: 403 });
-  }
+  const fileName = parts.at(-1) || "";
+  const access = playbackAccess(request, mediaEpisodeId(parts));
+  if (parts.some(part => part.startsWith('.'))) return new Response(null,{status:404});
+  const freeHls = parts[0] === 'hls' && parts.length === 3 && /^(master\.m3u8|(?:360p|480p)(?:\.m3u8|_\d+\.ts))$/.test(fileName);
+  if (!access.can_play) return Response.json({error:access.active ? "Login required" : "Active key required"},{status:403});
+  if (!freeHls && !access.is_vip) return Response.json({error:"VIP required"},{status:403});
+  if (!access.allow_480p && /^480p[_.]/.test(fileName)) return Response.json({error:"480p requires VIP"},{status:403});
+  if (!access.original_enabled && (parts[0] === 'videos' || fileName === 'original.mp4')) return Response.json({error:"Original playback disabled"},{status:403});
   const relative = parts.join(path.sep);
   const roots = [path.join(process.cwd(), "data", "media"), path.join(process.cwd(), "public", "uploads")];
   let file = "";
@@ -37,6 +38,16 @@ export async function GET(request: Request, context: { params: Promise<{ path: s
   }
   if (!file) return Response.json({ error: "Media not found" }, { status: 404 });
 
+  if (fileName === 'master.m3u8') {
+    // Never expose old HD variants through the free adaptive playlist.
+    const lines=(await fs.readFile(file,'utf8')).split(/\r?\n/);
+    const selected=['#EXTM3U','#EXT-X-VERSION:3'];
+    for(let i=0;i<lines.length-1;i++) {
+      if(lines[i].startsWith('#EXT-X-STREAM-INF:') && /^(360p|480p)\.m3u8$/.test(lines[i+1].trim()) && (access.allow_480p || lines[i+1].trim() === '360p.m3u8')) selected.push(lines[i],lines[i+1]);
+    }
+    if(selected.length===2) return Response.json({error:'Video processing'},{status:503});
+    return new Response(selected.join('\n')+'\n',{headers:{'Content-Type':'application/vnd.apple.mpegurl','Cache-Control':'private, no-store'}});
+  }
   const size = (await fs.stat(file)).size;
   const range = request.headers.get("range");
   let start = 0, end = size - 1;

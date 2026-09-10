@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { Lock, Eye, EyeOff, CheckCircle2, AlertTriangle, ShieldAlert, Power, Upload, Film, Clapperboard } from 'lucide-react';
 import { adminFetch } from '@/lib/adminApi';
+import AdminPlaybackSettings from '@/components/AdminPlaybackSettings';
 
 export default function AdminSettingsPage() {
   // --- Password State ---
@@ -191,6 +192,8 @@ export default function AdminSettingsPage() {
         <p className="text-xs text-slate-400 mt-1">Admin account settings, security & site controls</p>
       </div>
 
+      <AdminPlaybackSettings />
+
       {/* ═══════════════ Auto-Transcoding Toggle Card ═══════════════ */}
       <div className={`rounded-2xl border overflow-hidden transition-all duration-300 ${transcodeEnabled ? 'bg-[#1a1a2e] border-cyan-500/30' : 'bg-slate-950/40 border-slate-800'}`}>
         <div className="p-6 border-b border-slate-800/50 flex items-center justify-between">
@@ -200,7 +203,7 @@ export default function AdminSettingsPage() {
             </div>
             <div>
               <h2 className="text-lg font-bold text-white">Auto Transcoding (HLS)</h2>
-              <p className="text-xs text-slate-400">Convert uploaded videos to multi-quality HLS (360p/720p/1080p)</p>
+              <p className="text-xs text-slate-400">Convert uploaded videos to multi-quality HLS (360p/480p + VIP Original)</p>
             </div>
           </div>
 
@@ -221,7 +224,7 @@ export default function AdminSettingsPage() {
             <span>
               {transcodeEnabled
                 ? '🟢 ON — Videos will auto-convert to multi-quality HLS after upload'
-                : '🔴 OFF — Videos will be served as original file (no multi-quality)'}
+                : '🔴 OFF — No conversion; only compatible originals are available to VIP'}
             </span>
           </div>
 
@@ -235,9 +238,9 @@ export default function AdminSettingsPage() {
           {/* Info box */}
           <div className="p-4 rounded-xl bg-slate-800/30 border border-slate-700/50 text-xs text-slate-400 space-y-1">
             <p className="font-semibold text-slate-300 mb-2">ℹ️ How it works:</p>
-            <p>🎬 <strong className="text-slate-300">ON:</strong> After upload, FFmpeg creates 360p + 720p + 1080p HLS streams (uses CPU)</p>
-            <p>⚡ <strong className="text-slate-300">OFF:</strong> Videos are served as-is, no CPU-heavy transcoding (faster uploads)</p>
-            <p>💡 <strong className="text-slate-300">Tip:</strong> Turn OFF when uploading many videos, then run <code className="px-1.5 py-0.5 bg-slate-800 rounded text-cyan-300">npm run transcode</code> later to batch-process</p>
+            <p>🎬 <strong className="text-slate-300">ON:</strong> After upload, FFmpeg creates 360p, then 480p, then browser-compatible Original Quality HLS streams (uses CPU)</p>
+            <p>⚡ <strong className="text-slate-300">OFF:</strong> No jobs are started. Free playback needs a prepared 360p/480p version.</p>
+            <p>💡 <strong className="text-slate-300">Tip:</strong> Uploads made while OFF are not queued automatically. To explicitly process them, run <code className="px-1.5 py-0.5 bg-slate-800 rounded text-cyan-300">npm run transcode</code> later to batch-process</p>
           </div>
         </div>
       </div>

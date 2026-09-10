@@ -1,0 +1,52 @@
+const fs = require('fs');
+const path = require('path');
+const { execFile } = require('child_process');
+const profiles = [
+  { name:'360p', width:640, height:360, bitrate:'800k', audioBitrate:'64k' },
+  { name:'480p', width:854, height:480, bitrate:'1200k', audioBitrate:'96k' },
+];
+const atomicWrite = (file,text) => { fs.writeFileSync(file+'.tmp',text); fs.renameSync(file+'.tmp',file); };
+const probe = input => new Promise((resolve,reject) => execFile('ffprobe',['-v','error','-show_streams','-of','json',input],{maxBuffer:1024*1024},(e,out)=> {
+  if(e) return reject(e); try {resolve(JSON.parse(out).streams);} catch(e) {reject(e);}
+}));
+async function processMedia({input,output,threads,run,progress,publish}) {
+  const completed=[];
+  for(const p of profiles) {
+    const playlist=path.join(output,`${p.name}.m3u8`);
+    // Completed variants survive retries; never truncate a rendition being watched.
+    if(!fs.existsSync(playlist) || !fs.readFileSync(playlist,'utf8').includes('#EXT-X-ENDLIST')) {
+      progress(`Transcoding ${p.name}...`);
+      const temp=path.join(output,`.${p.name}-work`); fs.mkdirSync(temp,{recursive:true});
+      await run(['-y','-threads',String(threads),'-filter_threads','1','-i',input,'-map','0:v:0','-map','0:a:0?',
+        '-vf',`scale=${p.width}:${p.height}:force_original_aspect_ratio=decrease,pad=${p.width}:${p.height}:(ow-iw)/2:(oh-ih)/2,setsar=1`,
+        '-c:v','libx264','-pix_fmt','yuv420p','-preset','veryfast','-threads',String(threads),'-b:v',p.bitrate,'-maxrate',p.bitrate,'-bufsize',`${parseInt(p.bitrate)*2}k`,
+        '-force_key_frames','expr:gte(t,n_forced*4)','-c:a','aac','-b:a',p.audioBitrate,'-ac','2',
+        '-hls_time','4','-hls_playlist_type','vod','-hls_flags','independent_segments',
+        '-hls_segment_filename',path.join(temp,`${p.name}_%05d.ts`),path.join(temp,`${p.name}.m3u8`)]);
+      for(const name of fs.readdirSync(temp).filter(n=>n.endsWith('.ts'))) fs.renameSync(path.join(temp,name),path.join(output,name));
+      fs.renameSync(path.join(temp,`${p.name}.m3u8`),playlist);
+      fs.rmdirSync(temp);
+    }
+    completed.push(p);
+    atomicWrite(path.join(output,'master.m3u8'),'#EXTM3U\n#EXT-X-VERSION:3\n'+completed.map(v=>`#EXT-X-STREAM-INF:BANDWIDTH=${(parseInt(v.bitrate)+parseInt(v.audioBitrate))*1100},RESOLUTION=${v.width}x${v.height}\n${v.name}.m3u8\n`).join(''));
+    publish();
+  }
+  // Preserve source resolution. Copy browser-safe video; encode unsupported codecs only.
+  const original=path.join(output,'original.mp4');
+  if(!fs.existsSync(original)) {
+    progress('Preparing Original Quality (VIP)...');
+    const streams=await probe(input);
+    const video=streams.find(s=>s.codec_type==='video');
+    const audio=streams.find(s=>s.codec_type==='audio');
+    if(!video) throw new Error('No video stream');
+    const copyVideo=video.codec_name==='h264' && ['yuv420p','yuvj420p'].includes(video.pix_fmt);
+    const temp=path.join(output,'.original.partial.mp4');
+    await run(['-y','-threads',String(threads),'-filter_threads','1','-i',input,'-map','0:v:0','-map','0:a:0?',
+      ...(copyVideo ? ['-c:v','copy'] : ['-vf','scale=trunc(iw/2)*2:trunc(ih/2)*2','-c:v','libx264','-pix_fmt','yuv420p','-preset','veryfast','-crf','20','-threads',String(threads)]),
+      ...(audio?.codec_name==='aac' ? ['-c:a','copy'] : ['-c:a','aac','-b:a','128k','-ac','2']),
+      '-movflags','+faststart',temp]);
+    fs.renameSync(temp,original);
+  }
+  return completed.map(p=>p.name);
+}
+module.exports={processMedia,profiles};

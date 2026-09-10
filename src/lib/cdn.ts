@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { getSiteSettings } from "./db";
 
 function signDirectoryUrl(url: string, securityKey: string, validitySeconds: number): string {
   const parsed = new URL(url);
@@ -20,7 +21,7 @@ function signDirectoryUrl(url: string, securityKey: string, validitySeconds: num
  * External/embed servers are left untouched.
  */
 export function resolveStreamUrl(streamUrl: string): string {
-  const enabled = process.env.BUNNY_CDN_ENABLED === "1";
+  const enabled = process.env.BUNNY_CDN_ENABLED === "1" && getSiteSettings().bunny_playback_enabled === "1";
   const host = process.env.BUNNY_CDN_HOST?.trim().replace(/\/$/, "");
   if (!enabled || !host || !streamUrl?.startsWith("/uploads/hls/")) return streamUrl;
   const url = `${host}${streamUrl}`;

@@ -1,54 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getUserFromRequest } from "@/lib/auth";
-import { getSiteSettings, isUserKeyActive } from "@/lib/db";
-
-// GET /api/keys/status - Check current user's key and VIP access status
-export async function GET(request: NextRequest) {
-  try {
-    const settings = getSiteSettings();
-    const isSystemEnabled = settings.key_system_enabled !== "0";
-    const user = getUserFromRequest(request);
-
-    // If key system is turned off globally, all users have access
-    if (!isSystemEnabled && !user) {
-      return NextResponse.json({
-        is_logged_in: false,
-        active: true,
-        is_vip: false,
-        key_system_disabled: true,
-        remaining_hours: 9999,
-        expires_at: null,
-      });
-    }
-
-    if (!user) {
-      return NextResponse.json({
-        is_logged_in: false,
-        active: false,
-        is_vip: false,
-        key_system_disabled: false,
-        remaining_hours: 0,
-        expires_at: null,
-      });
-    }
-
-    const status = isUserKeyActive(user.id);
-
-    return NextResponse.json({
-      is_logged_in: true,
-      user_id: user.id,
-      username: user.username,
-      active: status.active,
-      is_vip: status.is_vip,
-      key_system_disabled: status.key_system_disabled || false,
-      remaining_hours: status.remaining_hours,
-      expires_at: status.expires_at,
-    });
-  } catch (error: any) {
-    console.error("[KeyStatus] Error:", error);
-    return NextResponse.json(
-      { error: error?.message || "Internal server error fetching key status" },
-      { status: 500 }
-    );
-  }
+import { NextResponse } from "next/server";
+import crypto from "crypto";
+import { userCookieOptions } from "@/lib/auth";
+import { guestId, playbackAccess } from "@/lib/playbackAccess";
+export const dynamic = "force-dynamic";
+export async function GET(request: Request) {
+  const episodeId = Number(new URL(request.url).searchParams.get('episode_id')) || undefined;
+  const {user,...access} = playbackAccess(request, episodeId);
+  const response = NextResponse.json({...access,is_logged_in:!!user}, {headers:{"Cache-Control":"private, no-store"}});
+  if(!guestId(request)) response.cookies.set("playback_guest",crypto.randomBytes(32).toString("hex"),{...userCookieOptions,sameSite:"lax"});
+  return response;
 }

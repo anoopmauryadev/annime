@@ -22,10 +22,16 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    if (typeof body !== "object" || !body) {
+    if (typeof body !== "object" || !body || Array.isArray(body)) {
       return NextResponse.json({ error: "Invalid settings payload" }, { status: 400 });
     }
 
+    for (const field of ['free_480p_enabled','vip_original_enabled','playback_login_required']) {
+      if (field in body && !['0','1'].includes(body[field])) return NextResponse.json({error:`Invalid ${field}`},{status:400});
+    }
+    if ('playback_guest_mode' in body && !['login','all','preview'].includes(body.playback_guest_mode)) return NextResponse.json({error:'Invalid guest mode'},{status:400});
+    if ('playback_login_required' in body && !('playback_guest_mode' in body)) body.playback_guest_mode=body.playback_login_required === '0' ? 'all' : 'login';
+    if ('playback_guest_mode' in body) body.playback_login_required=body.playback_guest_mode === 'all' ? '0' : '1';
     setSiteSettings(body);
 
     // Sync maintenance mode to data/maintenance.json for instant proxy pickup

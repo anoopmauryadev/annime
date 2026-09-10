@@ -197,6 +197,12 @@ function initializeDatabase(db: Database.Database) {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS guest_keys (
+      key_id INTEGER PRIMARY KEY REFERENCES access_keys(id) ON DELETE CASCADE,
+      browser_hash TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_guest_keys_browser ON guest_keys(browser_hash);
+
     CREATE INDEX IF NOT EXISTS idx_anime_slug ON anime(slug);
     CREATE INDEX IF NOT EXISTS idx_anime_type ON anime(type);
     CREATE INDEX IF NOT EXISTS idx_anime_priority ON anime(priority DESC);
@@ -272,6 +278,10 @@ function initializeDatabase(db: Database.Database) {
     telegram_btn_text: "Join",
     telegram_enabled: "1",
     key_system_enabled: "1",
+    playback_login_required: "1",
+    free_480p_enabled: "1",
+    vip_original_enabled: "1",
+    bunny_playback_enabled: "0",
     shortener_provider: "gplinks",
     shortener_api_url: "https://gplinks.in/api",
     shortener_api_token: "",
