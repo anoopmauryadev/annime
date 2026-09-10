@@ -159,7 +159,7 @@ conflicting media locations (keep existing unrelated configuration):
 
 ```nginx
 location ^~ /uploads/hls/ {
-    proxy_pass http://127.0.0.1:3000;
+    proxy_pass http://127.0.0.1:3000/api/media/hls/;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Real-IP $remote_addr;
@@ -168,7 +168,12 @@ location ^~ /uploads/hls/ {
 }
 ```
 
-Use the same pattern for `/uploads/videos/` and `/uploads/downloads/`. Validate
+Use `/api/media/videos/` and `/api/media/downloads/` respectively as the upstream
+URI for the other two locations. Keep the trailing slash: Nginx replaces the
+matched location prefix with this protected API prefix. This avoids a second
+Next.js proxy rewrite trying HTTPS against the local HTTP listener when the
+public request uses HTTPS. Cookies and Range headers still reach the API.
+Validate
 with `sudo nginx -t` before `sudo systemctl reload nginx`. Exclude media and
 authenticated routes from any Cloudflare cache-everything rule. The retired
 Bunny zone may still contain old cached public files; disabling delivery in

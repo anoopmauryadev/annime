@@ -456,20 +456,23 @@ function EpisodeVideoPlayer({ servers: initialServers, animeId, episodeId, title
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+        const sourceHeight = Number(embedSrc.match(/\/(\d+)p\.m3u8(?:$|\?)/)?.[1]) || 0;
         const levels: QualityLevel[] = data.levels.map((lvl) => {
-          let label = `${lvl.height}p`;
-          if (lvl.height >= 1440) label = "2K (1440p)";
-          else if (lvl.height >= 1080) label = "1080p Full HD";
-          else if (lvl.height >= 720) label = "720p HD";
-          else if (lvl.height >= 480) label = "480p";
-          else if (lvl.height >= 360) label = "360p Data Saver";
+          // A direct media playlist has no master RESOLUTION metadata.
+          const height = lvl.height || sourceHeight;
+          let label = `${height}p`;
+          if (height >= 1440) label = "2K (1440p)";
+          else if (height >= 1080) label = "1080p Full HD";
+          else if (height >= 720) label = "720p HD";
+          else if (height >= 480) label = "480p";
+          else if (height >= 360) label = "360p Data Saver";
           return {
-            index: lvl.height,
-            height: lvl.height,
+            index: height,
+            height,
             name: label,
             bitrate: lvl.bitrate,
           };
-        });
+        }).filter(level => level.height > 0);
 
         if (!nativeVariant) setQualityLevels(levels.sort((a, b) => a.height - b.height));
       });
@@ -511,12 +514,23 @@ function EpisodeVideoPlayer({ servers: initialServers, animeId, episodeId, title
         if(!response.ok) return;
         const text=await response.text();
         const names=[...text.matchAll(/^(360p|480p)\.m3u8$/gm)].map(m=>m[1]);
+        if (/\/(360p|480p)\.m3u8(?:$|\?)/.test(lowQualitySource)) {
+          const ready = await Promise.all(['360p', ...(allow480 ? ['480p'] : [])].map(async name => {
+            try {
+              const variant = await fetch(lowQualitySource.replace(/[^/]+$/, `${name}.m3u8`), {cache:'no-store'});
+              if (!variant.ok) return null;
+              const playlist = await variant.text();
+              return playlist.startsWith('#EXTM3U') && playlist.includes('#EXT-X-ENDLIST') ? name : null;
+            } catch { return null; }
+          }));
+          names.push(...ready.filter((name): name is string => name !== null));
+        }
         if(!cancelled && names.length) setQualityLevels(names.map(name=>({index:parseInt(name),height:parseInt(name),name})));
       } catch {}
     };
     refresh(); const timer=setInterval(refresh,10000);
     return ()=>{cancelled=true;clearInterval(timer);};
-  },[canPlay,lowQualitySource]);
+  },[canPlay,lowQualitySource,allow480]);
 
   const handleQualityChange = (lvlIndex: number) => {
     if(lvlIndex === -2) {
