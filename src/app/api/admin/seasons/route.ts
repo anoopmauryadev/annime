@@ -34,7 +34,7 @@ export async function DELETE(request: Request) {
   const id = parseInt(searchParams.get("id") || "0");
   if (id) {
     const { cleanupSeasonFiles } = await import("@/lib/fileCleanup");
-    cleanupSeasonFiles(id);
+    await cleanupSeasonFiles(id);
     deleteSeason(id);
   }
   return NextResponse.json({ success: true });

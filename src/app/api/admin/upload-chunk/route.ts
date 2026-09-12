@@ -10,7 +10,7 @@ import { rateLimit } from "@/lib/rateLimit";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes per chunk (each chunk is only 4MB, takes 1-3s)
 
-const ALLOWED_VIDEO_EXTS = new Set([".mp4", ".webm", ".mkv", ".mov", ".avi"]);
+const ALLOWED_VIDEO_EXTS = new Set([".mp4", ".webm", ".mkv", ".mov", ".avi", ".ts"]);
 
 export async function POST(request: Request) {
   const auth = requireAdminAuth(request);
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     const ext = path.extname(rawBasename).toLowerCase();
     if (!ALLOWED_VIDEO_EXTS.has(ext)) {
       return NextResponse.json(
-        { error: `Invalid video format (${ext}). Allowed: mp4, webm, mkv, mov, avi` },
+        { error: `Invalid video format (${ext}). Allowed: mp4, webm, mkv, mov, avi, ts` },
         { status: 400 }
       );
     }

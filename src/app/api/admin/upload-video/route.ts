@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       videoUrl = await saveUploadedFile(videoFile, "videos");
     }
 
-    if (!videoUrl.startsWith("/uploads/videos/") || !/\.(mp4|webm|mkv|mov|avi)$/i.test(videoUrl)) {
+    if (!videoUrl.startsWith("/uploads/videos/") || !/\.(mp4|webm|mkv|mov|avi|ts)$/i.test(videoUrl)) {
       return NextResponse.json({ error: "Select a locally uploaded video" }, { status: 400 });
     }
     const root = await fs.realpath(path.join(process.cwd(), "public", "uploads", "videos"));

@@ -52,7 +52,7 @@ try {
     try {height=JSON.parse(execFileSync('ffprobe',['-v','error','-select_streams','v:0','-show_entries','stream=height','-of','json',input],{timeout:30000,maxBuffer:1024*1024})).streams[0]?.height;}
     catch {console.log(`SKIP server ${server.id}: ffprobe could not read source.`);skipped++;continue;}
     const wanted=[360,480].filter(q=>q<=height);
-    if(job?.source_quality && job.source_quality!==height){console.log(`SKIP server ${server.id}: selected ${job.source_quality}p does not match source ${height}p.`);skipped++;continue;}
+    if(job?.source_quality && job.source_quality!==height)console.log(`Server ${server.id}: worker will correct selected ${job.source_quality}p to actual ${height}p.`);
     if(!wanted.length){console.log(`SKIP server ${server.id}: source below 360p.`);skipped++;continue;}
     const folder=(url.startsWith('/uploads/hls/')?url.split('/')[3]:job?.output_dir_name)||`ep_${server.episode_id}_${server.id}_repair`;
     if(!/^[a-zA-Z0-9_-]+$/.test(folder)){console.log(`SKIP server ${server.id}: invalid output folder.`);skipped++;continue;}

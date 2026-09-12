@@ -7,7 +7,7 @@ export default function UploadQualityFields({source,display,onSource,onDisplay}:
         <option value="0">Auto / unknown</option>
         {[360,480,720,1080].map(value=><option key={value} value={value}>{value}p</option>)}
       </select>
-      <span className="block text-xs text-slate-400 mt-1">Select the actual file resolution. Compatible video is copied at this quality; other codecs need conversion. Applies when auto-transcoding is ON.</span>
+      <span className="block text-xs text-slate-400 mt-1">Actual resolution is detected automatically; a wrong selection is corrected. Compatible video is copied; other codecs (including TS uploads) may need conversion. Auto-transcoding must be ON.</span>
     </label>
     <label className="text-sm text-slate-300">Display quality (shown to viewers)
       <select className={style} value={display} onChange={event=>onDisplay(event.target.value)}>

@@ -192,7 +192,7 @@ export default function NewAnimePage() {
               <input 
                 type="file" 
                 className="hidden" 
-                accept="video/*,.mp4,.mkv,.webm,.mov" 
+                accept="video/*,.ts,.mp4,.mkv,.webm,.mov"
                 onChange={(e) => { if (e.target.files?.[0]) setVideoFile(e.target.files[0]); }} 
               />
             </label>

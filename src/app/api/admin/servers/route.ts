@@ -41,6 +41,10 @@ export async function PUT(request: Request) {
   if (rest.stream_url) {
     rest.stream_url = cleanStreamUrl(rest.stream_url);
   }
+  if(rest.stream_url) {
+    const {cancelServerTranscodes}=await import("@/lib/cancelTranscodes");
+    await cancelServerTranscodes(Number(id));
+  }
   updateServer(id, rest);
   return NextResponse.json({ success: true });
 }
@@ -55,7 +59,7 @@ export async function DELETE(request: Request) {
   const id = parseInt(searchParams.get("id") || "0");
   if (id) {
     const { cleanupServerFiles } = await import("@/lib/fileCleanup");
-    cleanupServerFiles(id);
+    await cleanupServerFiles(id);
     deleteServer(id);
   }
   return NextResponse.json({ success: true });

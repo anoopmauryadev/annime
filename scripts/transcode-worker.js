@@ -11,6 +11,7 @@ db.pragma("busy_timeout = 5000");
 
 const jobColumns = db.prepare("PRAGMA table_info(transcode_jobs)").all().map((column) => column.name);
 for (const [name, definition] of [
+  ["actual_height", "INTEGER"], ["video_codec", "TEXT"], ["audio_codec", "TEXT"], ["quality_warning", "TEXT"],
   ["input_path", "TEXT"],
   ["output_dir_name", "TEXT"],
   ["master_url", "TEXT"],
@@ -37,6 +38,11 @@ process.on('exit',()=>{ try { if(fs.readFileSync(lockPath,'utf8')===String(proce
 
 let stopping = false;
 let activeProcess = null;
+let activeJobId = null;
+function assertActive() {
+  const row=db.prepare("SELECT status FROM transcode_jobs WHERE id=?").get(activeJobId);
+  if(!row || row.status!=="processing") throw new Error("Job cancelled");
+}
 
 function log(level, message, details = {}) {
   console.log(JSON.stringify({ time: new Date().toISOString(), level, service: "transcode-worker", message, ...details }));
@@ -78,11 +84,14 @@ function runFfmpeg(args) {
     let errorTail='';
     proc.stderr.on('data',chunk=>{errorTail=(errorTail+chunk.toString()).slice(-2000);});
     activeProcess = proc;
+    const cancelTimer=setInterval(()=>{try{assertActive();}catch{proc.kill('SIGTERM');}},200);
     proc.on("close", (code) => {
+      clearInterval(cancelTimer);
       activeProcess = null;
       code === 0 ? resolve() : reject(new Error(`FFmpeg exited with code ${code}: ${errorTail.trim()}`));
     });
     proc.on("error", (error) => {
+      clearInterval(cancelTimer);
       activeProcess = null;
       reject(error);
     });
@@ -93,9 +102,14 @@ async function processJob(job) {
   const { input, output } = safeJobPaths(job);
   const masterUrl = job.master_url || `/uploads/hls/${job.output_dir_name}/master.m3u8`;
   const completed = await processMedia({input,output,threads,sourceQuality:job.source_quality || 0,
-    run: args => { if(stopping) throw new Error('Worker stopped'); return runFfmpeg(args); },
+    inspect: info => {
+      db.prepare('UPDATE transcode_jobs SET actual_height=?,video_codec=?,audio_codec=?,quality_warning=? WHERE id=?').run(info.height,info.videoCodec,info.audioCodec,info.warning,job.id);
+      if(info.warning)log('warn','Source quality corrected',{jobId:job.id,...info});
+    },
+    run: args => { if(stopping) throw new Error('Worker stopped'); assertActive(); return runFfmpeg(args); },
     progress: text => updateJob(job.id,{progress_text:text}),
     publish: () => {
+      assertActive();
       if(job.server_id) db.prepare("UPDATE servers SET server_name=?,server_type='direct',stream_url=? WHERE id=?")
         .run('360p / 480p',masterUrl,job.server_id);
     },
@@ -106,6 +120,7 @@ async function processJob(job) {
     const {uploadHlsDirectory}=await import('./bunny-storage.mjs');
     await uploadHlsDirectory(output,job.output_dir_name);
   }
+  assertActive();
   updateJob(job.id, { status: "complete", progress_text: `Done! ${completed.join(", ")} ready.` });
   log("info", "Job completed", { jobId: job.id, serverId: job.server_id });
 }
@@ -115,6 +130,7 @@ async function main() {
   // A processing row means the previous worker exited before finishing it.
   db.prepare(`UPDATE transcode_jobs SET status='pending', progress_text='Recovered after worker restart',
     updated_at=datetime('now') WHERE status='processing' AND attempts < 3`).run();
+  db.prepare("UPDATE transcode_jobs SET status='cancelled' WHERE status='cancelling'").run();
   log("info", "Worker started", { threads });
   while (!stopping) {
     const job = claimNext();
@@ -124,8 +140,14 @@ async function main() {
       continue;
     }
     try {
+      activeJobId=job.id;
       await processJob(job);
     } catch (error) {
+      const state=db.prepare('SELECT status FROM transcode_jobs WHERE id=?').get(job.id);
+      if(!state || ['cancelling','cancelled'].includes(state.status)) {
+        updateJob(job.id,{status:'cancelled',progress_text:'Cancelled before media removal'});
+        continue;
+      }
       const message = error instanceof Error ? error.message : String(error);
       const retry = stopping || job.attempts < 3;
       if (stopping) db.prepare("UPDATE transcode_jobs SET attempts=MAX(0,attempts-1) WHERE id=?").run(job.id);

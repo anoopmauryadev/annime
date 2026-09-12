@@ -67,7 +67,7 @@ export async function DELETE(request: Request, ctx: RouteContext<'/api/admin/epi
   const params = await ctx.params;
   const id = parseInt(params.id);
   if (id) {
-    cleanupEpisodeFiles(id);
+    await cleanupEpisodeFiles(id);
     deleteEpisode(id);
   }
   return NextResponse.json({ success: true });

@@ -8,14 +8,14 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 
 const ALLOWED_IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif"]);
-const ALLOWED_VIDEO_EXTS = new Set([".mp4", ".webm", ".mkv", ".mov", ".avi"]);
+const ALLOWED_VIDEO_EXTS = new Set([".mp4", ".webm", ".mkv", ".mov", ".avi", ".ts"]);
 const run = promisify(execFile);
 
 export async function validateSavedMedia(filePath: string, isVideo: boolean): Promise<void> {
   if (isVideo) {
     try {
-      const { stdout } = await run("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-format_whitelist", "mov,matroska,webm,avi", "-select_streams", "v:0", "-show_entries", "stream=codec_type", "-of", "csv=p=0", filePath], { timeout: 30000 });
-      if (stdout.trim() !== "video") throw new Error("Missing video stream");
+      const { stdout } = await run("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-format_whitelist", "mov,matroska,webm,avi,mpegts", "-select_streams", "v:0", "-show_entries", "stream=codec_type", "-of", "json", filePath], { timeout: 30000 });
+      if (!JSON.parse(stdout).streams?.some((stream: {codec_type?: string}) => stream.codec_type === "video")) throw new Error("Missing video stream");
       return;
     } catch { throw new Error("Uploaded file is not a valid video"); }
   }
@@ -44,7 +44,7 @@ export async function saveUploadedFile(file: File, subfolder: string = ""): Prom
   if (file.size > maximum) throw new Error("Uploaded file exceeds the allowed size");
   if (isVideo) {
     if (!ALLOWED_VIDEO_EXTS.has(ext)) {
-      throw new Error(`Invalid video format (${ext}). Allowed formats: mp4, webm, mkv, mov, avi`);
+      throw new Error(`Invalid video format (${ext}). Allowed formats: mp4, webm, mkv, mov, avi, ts`);
     }
   } else {
     if (!ALLOWED_IMAGE_EXTS.has(ext)) {

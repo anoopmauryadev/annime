@@ -63,10 +63,27 @@ try {
   await processMedia({input:selectedInput,output:selectedOutput,sourceQuality:360,threads:1,run:args=>{selectedCommands.push(args);return exec('ffmpeg',['-v','error',...args]);},progress:()=>{},publish:()=>{}});
   assert.ok(selectedCommands.every(args=>args[args.indexOf('-c:v')+1]==='copy'),'Compatible selected source must not re-encode');
   assert.ok(!(await fs.readdir(selectedOutput)).includes('480p.m3u8'),'360p input must not be upscaled');
-  await assert.rejects(processMedia({input:selectedInput,output:selectedOutput,sourceQuality:1080,threads:1,run:()=>{throw Error('must not encode');},progress:()=>{},publish:()=>{}}),/Selected 1080p but file is 360p/);
+  let detected;
+  await processMedia({input:selectedInput,output:selectedOutput,sourceQuality:1080,threads:1,inspect:info=>{detected=info;},run:()=>{throw Error('must not encode');},progress:()=>{},publish:()=>{}});
+  assert.equal(detected.height,360);assert.match(detected.warning,/Selected 1080p; detected 360p/);
   const selectedProbe=JSON.parse((await exec('ffprobe',['-v','error','-show_streams','-of','json',path.join(selectedOutput,'original.mp4')])).stdout);
   assert.equal(selectedProbe.streams.find(s=>s.codec_type==='video').height,360);
-  console.log('PASS: selected 360p MKV remuxed without video encoding, no upscale, playable Original and mismatched source rejected.');
+  const tsInput=path.join(temp,'selected480.ts'),tsOutput=path.join(temp,'selected480');
+  await fs.mkdir(tsOutput);
+  await exec('ffmpeg',['-y','-v','error','-i',path.join(output,'480p.m3u8'),'-c','copy','-f','mpegts',tsInput]);
+  const uploadLib=await load('src/lib/upload.ts');
+  await uploadLib.validateSavedMedia(tsInput,true);
+  const badTs=path.join(temp,'invalid.ts');await fs.writeFile(badTs,'not a video');
+  await assert.rejects(uploadLib.validateSavedMedia(badTs,true),/not a valid video/);
+  let first=true;
+  await processMedia({input:tsInput,output:tsOutput,sourceQuality:360,threads:1,
+    inspect:info=>{assert.equal(info.height,480);assert.ok(info.warning);},
+    run:args=>{if(first)assert.equal(args[args.indexOf('-c:v')+1],'copy');return exec('ffmpeg',['-v','error',...args]);},
+    progress:()=>{},publish:()=>{if(first){assert.ok(require('fs').existsSync(path.join(tsOutput,'480p.m3u8')));assert.ok(!require('fs').existsSync(path.join(tsOutput,'360p.m3u8')));first=false;}}});
+  assert.ok(require('fs').existsSync(path.join(tsOutput,'360p.m3u8')));
+  assert.ok(require('fs').existsSync(path.join(tsOutput,'original.mp4')));
+  console.log('PASS: real TS validated, fake TS rejected, wrong selection corrected to 480p, source remuxed before 360p.');
+  console.log('PASS: selected 360p MKV remuxed without video encoding, no upscale, playable Original and mismatched source corrected.');
   console.log('PASS: 360p published before 480p/original; incompatible MKV converted; source resolution retained; retry preserves renditions.');
   database.updateTranscodeJob(jobId,{status:'complete'});
   // Repair must include completed HLS jobs with missing renditions, without redoing 360p.
@@ -81,12 +98,36 @@ try {
   assert.equal((await fs.stat(path.join(output,'360p.m3u8'))).mtimeMs,stamp);
   assert.ok((await fs.readFile(path.join(output,'480p.m3u8'),'utf8')).includes('#EXT-X-ENDLIST'));
   console.log('PASS: repair preview is read-only; completed HLS job requeued; real worker rebuilt missing 480p and retained 360p.');
+  // A worker must acknowledge cancellation before cleanup unlinks its input.
+  const cancelInput=path.join(temp,'public/uploads/videos/cancel.ts');await fs.copyFile(tsInput,cancelInput);
+  const cancelServer=database.createServer({episode_id:episode.id,server_name:'cancel fixture',server_type:'direct',stream_url:'/uploads/videos/cancel.ts',server_order:9});
+  const cancelJob=database.createTranscodeJob({server_id:cancelServer,status:'pending',input_path:cancelInput,output_dir_name:'cancel_fixture'});
+  const fakeBin=path.join(temp,'fake-bin');await fs.mkdir(fakeBin);
+  const began=path.join(temp,'ffmpeg-started'),ended=path.join(temp,'ffmpeg-ended');
+  await fs.writeFile(path.join(fakeBin,'ffmpeg'),`#!/usr/bin/env node
+const fs=require('fs');fs.writeFileSync(${JSON.stringify(began)},'started');
+process.on('SIGTERM',()=>{fs.writeFileSync(${JSON.stringify(ended)},'stopped');process.exit(1);});setInterval(()=>{},1000);
+`,{mode:0o755});
+  const cancelWorker=spawn(process.execPath,[path.join(root,'scripts/transcode-worker.js'),'--once'],{cwd:temp,env:{...process.env,PATH:fakeBin+path.delimiter+process.env.PATH},stdio:'ignore'});
+  try {
+    for(let i=0;!require('fs').existsSync(began);i++){if(i>100)throw Error('Worker did not begin cancellation fixture');await new Promise(r=>setTimeout(r,100));}
+    const cancels=await load('src/lib/cancelTranscodes.ts',{'./db':database});
+    const cleanup=await load('src/lib/fileCleanup.ts',{'@/lib/db':database,'./cancelTranscodes':cancels});
+    await cleanup.cleanupServerFiles(cancelServer);
+    assert.ok(require('fs').existsSync(ended));
+    assert.ok(!require('fs').existsSync(cancelInput));
+    assert.equal(db.prepare('SELECT id FROM transcode_jobs WHERE id=?').get(cancelJob),undefined);
+    database.deleteServer(cancelServer);
+    console.log('PASS: active worker stopped and acknowledged before source deletion; cancelled job was not retried.');
+  } finally {
+    if(cancelWorker.exitCode===null){cancelWorker.kill('SIGTERM');await new Promise(r=>cancelWorker.once('exit',r));}
+  }
   await fs.appendFile(path.join(output,'master.m3u8'),'#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080\n1080p.m3u8\n');
   await fs.writeFile(path.join(output,'1080p.m3u8'),'PRIVATE-HD');
   await fs.writeFile(path.join(output,'1080p_00000.ts'),'PRIVATE-HD');
   // Force a previously enabled CDN env; new default must still use local URLs.
   process.chdir(root);
-  server=spawn(process.execPath,[path.join(root,'node_modules/next/dist/bin/next'),'start','-H','127.0.0.1','-p','3198'],{cwd:temp,env:{...process.env,NODE_ENV:'production',BUNNY_CDN_ENABLED:'1',BUNNY_CDN_HOST:'https://example.b-cdn.net'},stdio:'pipe'});
+  server=spawn(process.execPath,[path.join(root,'node_modules/next/dist/bin/next'),'start','-H','127.0.0.1','-p','3198'],{cwd:temp,env:{...process.env,NODE_ENV:'production',TRANSCODE_WORKER_MODE:'external',BUNNY_CDN_ENABLED:'1',BUNNY_CDN_HOST:'https://example.b-cdn.net'},stdio:'pipe'});
   let logs='';server.stdout.on('data',b=>logs+=b);server.stderr.on('data',b=>logs+=b);
   for(let i=0;;i++) {try {await call('/api/keys/status');break;} catch {if(i>80 || server.exitCode!==null)throw Error(logs);await new Promise(r=>setTimeout(r,100));}}
   assert.equal((await call('/uploads/hls/fixture/master.m3u8')).status,403);
@@ -103,6 +144,19 @@ try {
   assert.equal((await call('/uploads/hls/fixture/360p.m3u8',guest)).status,403);
   const admin=db.prepare('SELECT * FROM admin_users LIMIT 1').get();
   const adminCookie=`admin_token=${auth.generateAdminToken(admin)}`;
+  assert.equal((await call('/api/admin/transcode-status',guest,{server_id:serverId})).status,401);
+  assert.equal((await call('/api/admin/transcode-status',adminCookie,{server_id:serverId})).status,409);
+  const retryServer=database.createServer({episode_id:episode.id,server_name:'retry fixture',server_type:'direct',stream_url:'/uploads/videos/test.mkv',server_order:10});
+  const retryJob=database.createTranscodeJob({server_id:retryServer,status:'failed',input_path:input,output_dir_name:'retry_fixture'});
+  assert.equal((await call('/api/admin/transcode-status',adminCookie,{server_id:retryServer})).status,200);
+  assert.equal(db.prepare('SELECT status FROM transcode_jobs WHERE id=?').get(retryJob).status,'pending');
+  assert.equal((await call('/api/admin/transcode-status',adminCookie,{server_id:retryServer})).status,409);
+  db.prepare("UPDATE transcode_jobs SET status='failed',input_path=? WHERE id=?").run(path.join(temp,'missing'),retryJob);
+  assert.equal((await call('/api/admin/transcode-status',adminCookie,{server_id:retryServer})).status,409);
+  db.prepare('DELETE FROM transcode_jobs WHERE id=?').run(retryJob);database.deleteServer(retryServer);
+  console.log('PASS: admin retry queues failed job once, requires source, and rejects unauthenticated requests.');
+
+
   assert.equal((await call('/api/downloads',login)).status,403);
   assert.equal((await call('/api/admin/settings',adminCookie,{free_downloads_enabled:'1',key_system_enabled:'0'})).status,200);
   assert.equal((await call('/api/downloads',login)).status,200);

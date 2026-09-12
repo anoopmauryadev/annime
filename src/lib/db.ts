@@ -242,6 +242,10 @@ function initializeDatabase(db: Database.Database) {
       db.exec(`ALTER TABLE transcode_jobs ADD COLUMN ${name} ${definition}`);
     }
   };
+  addTranscodeColumn("actual_height", "INTEGER");
+  addTranscodeColumn("video_codec", "TEXT");
+  addTranscodeColumn("audio_codec", "TEXT");
+  addTranscodeColumn("quality_warning", "TEXT");
   addTranscodeColumn("input_path", "TEXT");
   addTranscodeColumn("output_dir_name", "TEXT");
   addTranscodeColumn("master_url", "TEXT");

@@ -14,15 +14,19 @@ function renditionReady(file) {
       /^[a-zA-Z0-9_-]+\.ts$/.test(name)&&fs.statSync(path.join(path.dirname(file),name)).size>0);
   }catch{return false;}
 }
-const probe = input => new Promise((resolve,reject) => execFile('ffprobe',['-v','error','-show_streams','-of','json',input],{maxBuffer:1024*1024},(e,out)=> {
+const probe = input => new Promise((resolve,reject) => execFile('ffprobe',['-v','error','-show_streams','-of','json',input],{maxBuffer:1024*1024,timeout:30000},(e,out)=> {
   if(e) return reject(e); try {resolve(JSON.parse(out).streams);} catch(e) {reject(e);}
 }));
-async function processMedia({input,output,threads,run,progress,publish,sourceQuality=0}) {
+async function processMedia({input,output,threads,run,progress,publish,sourceQuality=0,inspect=()=>{}}) {
   const sourceStreams=await probe(input);
   const sourceVideo=sourceStreams.find(s=>s.codec_type==='video');
   if(!sourceVideo)throw new Error('No video stream');
-  if(sourceQuality && sourceVideo.height!==sourceQuality)throw new Error(`Selected ${sourceQuality}p but file is ${sourceVideo.height}p. Select Auto or the actual source resolution.`);
+  const warning=sourceQuality && sourceVideo.height!==sourceQuality ? `Selected ${sourceQuality}p; detected ${sourceVideo.height}p. Using actual resolution.` : '';
+  inspect({height:sourceVideo.height,videoCodec:sourceVideo.codec_name,audioCodec:sourceStreams.find(s=>s.codec_type==='audio')?.codec_name || '',warning});
+  if(sourceQuality) sourceQuality=sourceVideo.height;
   const safeVideo=sourceVideo.codec_name==='h264' && ['yuv420p','yuvj420p'].includes(sourceVideo.pix_fmt);
+  const selectedHeight=sourceQuality || (safeVideo && [360,480].includes(sourceVideo.height) ? sourceVideo.height : 0);
+  sourceQuality=selectedHeight;
   const selected=sourceQuality ? {name:`${sourceQuality}p`,width:sourceVideo.width,height:sourceVideo.height,bitrate:`${Math.ceil(Number(sourceVideo.bit_rate || 5000000)/1000)}k`,audioBitrate:'128k'} : null;
   const workProfiles=selected ? [selected,...profiles.filter(p=>p.height<sourceQuality)] : profiles.filter(p=>p.height<=sourceVideo.height);
   const completed=[];

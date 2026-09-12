@@ -48,7 +48,7 @@ export default function EpisodesPage() {
   const [serverVideoName, setServerVideoName] = useState('Server 1 (Uploaded Video)');
   const [uploadingServerVideo, setUploadingServerVideo] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ pct: number; text: string } | null>(null);
-  const [transcodeJobs, setTranscodeJobs] = useState<Record<number, { status: string; progress_text: string }>>({});
+  const [transcodeJobs, setTranscodeJobs] = useState<Record<number, { status: string; progress_text: string; error?: string; actual_height?: number; video_codec?: string; audio_codec?: string; quality_warning?: string }>>({});
 
   // Add external server form
   const [newServerName, setNewServerName] = useState('Server 2 - External');
@@ -214,9 +214,9 @@ export default function EpisodesPage() {
         if (data.status && data.status !== 'none') {
           setTranscodeJobs((prev) => ({
             ...prev,
-            [sid]: { status: data.status, progress_text: data.progress_text },
+            [sid]: data,
           }));
-          if (data.status === 'complete' || data.status === 'failed') {
+          if (data.status === 'complete' || data.status === 'failed' || data.status === 'cancelled') {
             clearInterval(timer);
           }
         } else {
@@ -249,7 +249,7 @@ export default function EpisodesPage() {
               if (job.status && job.status !== 'none') {
                 setTranscodeJobs((prev) => ({
                   ...prev,
-                  [s.id]: { status: job.status, progress_text: job.progress_text },
+                  [s.id]: job,
                 }));
                 if (job.status === 'processing' || job.status === 'pending') {
                   pollTranscodeJob(s.id);
@@ -474,7 +474,7 @@ export default function EpisodesPage() {
                     <input 
                       type="file" 
                       className="hidden" 
-                      accept="video/*,.mp4,.mkv,.webm" 
+                      accept="video/*,.ts,.mp4,.mkv,.webm"
                       onChange={e => { if (e.target.files?.[0]) setNewEpVideo(e.target.files[0]); }} 
                     />
                   </label>
@@ -606,7 +606,7 @@ export default function EpisodesPage() {
                           <input 
                             type="file" 
                             className="hidden" 
-                            accept="video/*,.mp4,.mkv,.webm" 
+                            accept="video/*,.ts,.mp4,.mkv,.webm"
                             onChange={e => { if (e.target.files?.[0]) setServerVideoFile(e.target.files[0]); }} 
                           />
                         </label>
@@ -656,6 +656,16 @@ export default function EpisodesPage() {
                               <span className="font-semibold text-white whitespace-nowrap">{s.server_name}</span>
                               <span className="text-xs px-2 py-0.5 bg-violet-600/20 text-violet-300 rounded font-mono">{s.server_type}</span>
                               
+                              {job?.actual_height && <span className="text-xs">Actual: {job.actual_height}p · {job.video_codec} / {job.audio_codec || 'no audio'}</span>}
+                              {job?.quality_warning && <span className="text-xs text-amber-300">{job.quality_warning}</span>}
+                              {job?.error && <span className="text-xs text-red-300 break-all">{job.error}</span>}
+                              {job && job.status==='failed' && <button type="button" className="px-2 py-1 bg-violet-600 rounded" onClick={async()=>{
+                                const response=await adminFetch('/api/admin/transcode-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({server_id:s.id})});
+                                const result=await response.json();
+                                if(!response.ok){alert(result.error || 'Retry failed');return;}
+                                setTranscodeJobs(prev=>({...prev,[s.id]:{...prev[s.id],status:'pending',error:'',progress_text:'Retry queued'}}));
+                                pollTranscodeJob(s.id);
+                              }}>Retry</button>}
                               {/* Transcode Status Badge */}
                               {job ? (
                                 job.status === 'processing' ? (
@@ -664,7 +674,7 @@ export default function EpisodesPage() {
                                   </span>
                                 ) : job.status === 'complete' ? (
                                   <span className="text-[11px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded flex items-center gap-1 font-bold border border-emerald-500/30">
-                                    <CheckCircle2 size={11} className="text-emerald-400" /> Multi-Quality HLS Ready (360p-2K)
+                                    <CheckCircle2 size={11} className="text-emerald-400" /> {job.progress_text}
                                   </span>
                                 ) : (
                                   <span className="text-[11px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded flex items-center gap-1 font-medium">

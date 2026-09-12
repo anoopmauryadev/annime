@@ -64,8 +64,8 @@ export default function EpisodeDownloads({
       const url = s.stream_url || "";
       // ONLY allow real video files (.mp4, .webm, .mkv, .mov, .avi)
       // NEVER allow .m3u8 playlists, /hls/ streams, or iframe embeds
-      const isRealVideoFile = /\.(mp4|webm|mkv|mov|avi)(\?|$)/i.test(url);
-      const isPlaylistOrEmbed = url.includes("/hls/") || url.endsWith(".m3u8") || url.endsWith(".ts") || s.server_type === "embed";
+      const isRealVideoFile = /\.(mp4|webm|mkv|mov|avi|ts)(\?|$)/i.test(url);
+      const isPlaylistOrEmbed = url.includes("/hls/") || url.endsWith(".m3u8") || s.server_type === "embed";
 
       if (isRealVideoFile && !isPlaylistOrEmbed) {
         effectiveDownloads.push({
@@ -79,7 +79,7 @@ export default function EpisodeDownloads({
   }
 
   const cleanDownloadName = (quality: string, url: string) => {
-    const extMatch = url.match(/\.(mp4|webm|mkv|mov|avi)(\?|$)/i);
+    const extMatch = url.match(/\.(mp4|webm|mkv|mov|avi|ts)(\?|$)/i);
     const ext = extMatch ? extMatch[1].toLowerCase() : "mp4";
     const base = episodeTitle ? episodeTitle.replace(/[^a-zA-Z0-9_-]/g, "_") : "Episode";
     const q = quality.replace(/[^a-zA-Z0-9_-]/g, "_");

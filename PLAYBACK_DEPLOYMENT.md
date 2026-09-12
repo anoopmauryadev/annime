@@ -67,8 +67,9 @@ resolution. Compatible H.264 video is stream-copied to HLS; AAC audio is also
 copied. Unsupported codecs are converted once at source resolution for browser
 playback. Lower 360p/480p variants are then generated if below the selected
 resolution; a 360p upload is not upscaled to 480p. Original MP4 reuses the
-prepared source streams. A wrong source-height selection fails the job rather
-than labelling HD as low quality; choose Auto for cropped/unknown resolutions.
+prepared source streams. A wrong source-height selection is corrected to the detected resolution; the
+admin job displays actual codecs/resolution and a correction warning. Auto
+stream-copies compatible 360p/480p sources instead of encoding that size again.
 Remuxed segment lengths follow existing keyframes and may exceed four seconds.
 Auto-transcoding OFF still queues nothing. These changes do not reprocess old
 uploads or retrofit source selections into previous jobs.
@@ -222,3 +223,24 @@ The test uses disposable data, a local fixture video and port 3198. Set
 `PLAYWRIGHT_MODULE` to an installed Playwright module to additionally run Chrome
 checks for key-before-login, guest activation, 480p, Original Quality and return
 to 360p. It does not modify the production database or contact a real shortener.
+
+## TS uploads, resolution detection and retry
+
+Admin video upload accepts MPEG-TS (`.ts`) files. FFprobe validates a real video
+stream using local-file protocols and an explicit container allowlist; renamed
+text/playlist files are rejected. With auto-transcoding ON, the worker prepares
+HLS and a browser-compatible MP4. H.264/AAC can be remuxed; incompatible codecs
+need conversion. Auto-transcoding OFF continues to queue nothing, so a raw TS
+upload is not promised immediate browser playback.
+
+In Admin → Anime → Episodes, expand an episode to see each server's actual
+source resolution/codecs, correction warning, status and error. Failed jobs
+have a Retry button. Retry retains the original selection for the warning and
+uses actual resolution during processing. Missing source files must be restored
+before retrying. Old failed jobs are not automatically requeued by deployment.
+
+Deleting a server/episode/season/anime or changing its stream URL cancels related
+queued jobs and waits for the worker to stop an active FFmpeg process before
+removing its files. If the worker does not acknowledge within ten seconds, the
+operation fails without removing that active job's files; retry the operation.
+Deploy the worker together with the app so cancellation is supported.

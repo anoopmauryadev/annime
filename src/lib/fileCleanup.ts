@@ -1,3 +1,4 @@
+import {cancelTranscodes, cancelServerTranscodes} from "./cancelTranscodes";
 import fs from "fs";
 import path from "path";
 import { getDb } from "@/lib/db";
@@ -69,7 +70,8 @@ export function deleteLocalFileOrDir(urlOrPath?: string | null): boolean {
 /**
  * Clean up physical video/HLS files and records when a stream server is deleted
  */
-export function cleanupServerFiles(serverId: number) {
+export async function cleanupServerFiles(serverId: number) {
+  await cancelServerTranscodes(serverId);
   try {
     const db = getDb();
     const server = db.prepare("SELECT * FROM servers WHERE id = ?").get(serverId) as any;
@@ -81,28 +83,32 @@ export function cleanupServerFiles(serverId: number) {
     db.prepare("DELETE FROM server_reports WHERE server_id = ?").run(serverId);
   } catch (e) {
     console.error(`[FileCleanup] Error cleaning up server ${serverId}:`, e);
+    throw e;
   }
 }
 
 /**
  * Clean up physical download file when a download link is deleted
  */
-export function cleanupDownloadFiles(downloadId: number) {
+export async function cleanupDownloadFiles(downloadId: number) {
   try {
     const db = getDb();
     const dl = db.prepare("SELECT * FROM downloads WHERE id = ?").get(downloadId) as any;
     if (dl && dl.download_url) {
+      const jobs=db.prepare("SELECT id FROM transcode_jobs WHERE input_path=?").all(path.join(process.cwd(),"public",dl.download_url)) as {id:number}[];
+      await cancelTranscodes(jobs.map(job=>job.id));
       deleteLocalFileOrDir(dl.download_url);
     }
   } catch (e) {
     console.error(`[FileCleanup] Error cleaning up download ${downloadId}:`, e);
+    throw e;
   }
 }
 
 /**
  * Clean up all video files, HLS folders, thumbnails, and child records when an episode is deleted
  */
-export function cleanupEpisodeFiles(episodeId: number) {
+export async function cleanupEpisodeFiles(episodeId: number) {
   try {
     const db = getDb();
     const ep = db.prepare("SELECT * FROM episodes WHERE id = ?").get(episodeId) as any;
@@ -110,6 +116,7 @@ export function cleanupEpisodeFiles(episodeId: number) {
 
     // 1. Delete all servers and their video/HLS files
     const servers = db.prepare("SELECT * FROM servers WHERE episode_id = ?").all(episodeId) as any[];
+    for (const s of servers) await cancelServerTranscodes(s.id);
     for (const s of servers) {
       if (s.stream_url) deleteLocalFileOrDir(s.stream_url);
     }
@@ -150,29 +157,31 @@ export function cleanupEpisodeFiles(episodeId: number) {
     db.prepare("DELETE FROM watch_history WHERE episode_id = ?").run(episodeId);
   } catch (e) {
     console.error(`[FileCleanup] Error cleaning up episode ${episodeId}:`, e);
+    throw e;
   }
 }
 
 /**
  * Clean up all episodes, videos, and HLS folders when a season is deleted
  */
-export function cleanupSeasonFiles(seasonId: number) {
+export async function cleanupSeasonFiles(seasonId: number) {
   try {
     const db = getDb();
     const episodes = db.prepare("SELECT id FROM episodes WHERE season_id = ?").all(seasonId) as any[];
     for (const ep of episodes) {
-      cleanupEpisodeFiles(ep.id);
+      await cleanupEpisodeFiles(ep.id);
       db.prepare("DELETE FROM episodes WHERE id = ?").run(ep.id);
     }
   } catch (e) {
     console.error(`[FileCleanup] Error cleaning up season ${seasonId}:`, e);
+    throw e;
   }
 }
 
 /**
  * Clean up all posters, banners, seasons, episodes, videos, and HLS folders when an anime is deleted
  */
-export function cleanupAnimeFiles(animeId: number) {
+export async function cleanupAnimeFiles(animeId: number) {
   try {
     const db = getDb();
     const anime = db.prepare("SELECT * FROM anime WHERE id = ?").get(animeId) as any;
@@ -186,14 +195,14 @@ export function cleanupAnimeFiles(animeId: number) {
     // 2. Delete all seasons & their episodes/videos
     const seasons = db.prepare("SELECT id FROM seasons WHERE anime_id = ?").all(animeId) as any[];
     for (const s of seasons) {
-      cleanupSeasonFiles(s.id);
+      await cleanupSeasonFiles(s.id);
       db.prepare("DELETE FROM seasons WHERE id = ?").run(s.id);
     }
 
     // 3. Delete any orphaned episodes directly under this anime_id
     const episodes = db.prepare("SELECT id FROM episodes WHERE anime_id = ?").all(animeId) as any[];
     for (const ep of episodes) {
-      cleanupEpisodeFiles(ep.id);
+      await cleanupEpisodeFiles(ep.id);
       db.prepare("DELETE FROM episodes WHERE id = ?").run(ep.id);
     }
 
@@ -202,5 +211,6 @@ export function cleanupAnimeFiles(animeId: number) {
     try { db.prepare("DELETE FROM comments WHERE anime_id = ?").run(animeId); } catch {}
   } catch (e) {
     console.error(`[FileCleanup] Error cleaning up anime ${animeId}:`, e);
+    throw e;
   }
 }

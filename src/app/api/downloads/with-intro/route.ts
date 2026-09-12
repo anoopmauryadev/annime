@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 const headers = { "Cache-Control": "private, no-store" };
 
 async function localFile(url: string, folder: string) {
-  if (!url.startsWith(folder) || !/\.(mp4|webm|mkv|mov|avi)$/i.test(url)) throw new Error("Invalid local video path");
+  if (!url.startsWith(folder) || !/\.(mp4|webm|mkv|mov|avi|ts)$/i.test(url)) throw new Error("Invalid local video path");
   const root = await fs.realpath(path.join(process.cwd(), "public", folder));
   const file = await fs.realpath(path.resolve(process.cwd(), "public", `.${url}`));
   if (!file.startsWith(root + path.sep) || !(await fs.stat(file)).isFile()) throw new Error("Invalid local video path");

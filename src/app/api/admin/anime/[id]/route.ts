@@ -75,7 +75,7 @@ export async function DELETE(request: Request, ctx: RouteContext<'/api/admin/ani
 
   const params = await ctx.params;
   const animeId = parseInt(params.id);
-  cleanupAnimeFiles(animeId);
+  await cleanupAnimeFiles(animeId);
   deleteAnime(animeId);
   return NextResponse.json({ success: true });
 }
