@@ -86,7 +86,7 @@ export default async function WatchPage({
   const cookieStore = await cookies();
   const access = playbackAccess(new Request("http://localhost", {headers:{cookie:cookieStore.toString()}}), currentEp.id);
   const servers = playbackServers(currentEp.id,access);
-  const downloads = access.is_vip ? getDownloadsByEpisode(currentEp.id) : [];
+  const downloads = access.can_download ? getDownloadsByEpisode(currentEp.id) : [];
 
   // Prev / next episode logic
   const seasonEpisodes = episodes.filter((e) => e.season_id === currentSeason.id);

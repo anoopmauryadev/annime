@@ -27,8 +27,9 @@ export default function EpisodeDownloads({
   const { user, token, isLoading } = useAuth();
   const pathname = usePathname();
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
-  const [vipCheck, setVipCheck] = useState<{ id: number; vip: boolean } | null>(null);
+  const [vipCheck, setVipCheck] = useState<{ id: number; vip: boolean; download: boolean } | null>(null);
   const isVip = !!user && vipCheck?.id === user.id && vipCheck.vip;
+  const canDownload = !!user && vipCheck?.id === user.id && vipCheck.download;
   const checkingVip = !!user && vipCheck?.id !== user.id;
   const [downloadError, setDownloadError] = useState("");
   const [downloadStatus, setDownloadStatus] = useState("");
@@ -46,9 +47,9 @@ export default function EpisodeDownloads({
     })
       .then((r) => r.json())
       .then((data) => {
-        setVipCheck({ id, vip: data?.is_vip === true });
+        setVipCheck({ id, vip: data?.is_vip === true, download: data?.can_download === true });
       })
-      .catch(() => { if (!controller.signal.aborted) setVipCheck({ id, vip: false }); });
+      .catch(() => { if (!controller.signal.aborted) setVipCheck({ id, vip: false, download: false }); });
     refresh();
     window.addEventListener("focus", refresh);
     return () => { controller.abort(); window.removeEventListener("focus", refresh); };
@@ -57,8 +58,8 @@ export default function EpisodeDownloads({
   useEffect(() => () => downloadRequest.current?.abort(), []);
 
   // Only build effective downloads for VIP users
-  const effectiveDownloads = isVip ? [...downloads] : [];
-  if (isVip && effectiveDownloads.length === 0 && servers && servers.length > 0) {
+  const effectiveDownloads = canDownload ? [...downloads] : [];
+  if (canDownload && effectiveDownloads.length === 0 && servers && servers.length > 0) {
     servers.forEach((s, idx) => {
       const url = s.stream_url || "";
       // ONLY allow real video files (.mp4, .webm, .mkv, .mov, .avi)
@@ -141,7 +142,7 @@ export default function EpisodeDownloads({
           </span>
         ) : user ? (
           <span className="text-[11px] bg-slate-500/10 text-slate-400 border border-slate-500/20 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
-            <Lock size={11} /> VIP Only
+            <Lock size={11} /> {canDownload ? "Free Download Access" : "Restricted"}
           </span>
         ) : (
           <span className="text-[11px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
@@ -164,10 +165,10 @@ export default function EpisodeDownloads({
             </div>
             <div>
               <p className="text-sm font-bold text-white flex items-center gap-1.5 justify-center sm:justify-start">
-                <span>Downloads Reserved for VIP Members</span>
+                <span>Sign in to access downloads</span>
               </p>
               <p className="text-xs text-gray-400 mt-0.5">
-                Sign in and upgrade to VIP to unlock high-speed direct downloads.
+                Sign in to check download access for your account.
               </p>
             </div>
           </div>
@@ -179,15 +180,15 @@ export default function EpisodeDownloads({
             <ArrowRight size={14} />
           </Link>
         </div>
-      ) : !isVip ? (
+      ) : !canDownload ? (
         /* Logged in but NOT VIP */
         <div className="bg-gradient-to-br from-amber-500/5 to-orange-500/5 border border-amber-500/20 rounded-xl p-5 text-center space-y-3">
           <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center mx-auto">
             <Crown size={24} />
           </div>
-          <p className="text-sm font-bold text-white">VIP Membership Required</p>
+          <p className="text-sm font-bold text-white">Download Access Required</p>
           <p className="text-xs text-gray-400 max-w-sm mx-auto">
-            Downloads are exclusively available for VIP members. Contact admin to upgrade your account.
+            Free downloads must be enabled by admin and your key must be active when required. Otherwise VIP membership is required.
           </p>
         </div>
       ) : effectiveDownloads.length > 0 ? (

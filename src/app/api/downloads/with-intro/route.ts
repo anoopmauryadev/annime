@@ -1,4 +1,5 @@
-import { getDb, getSiteSettings, isUserKeyActive } from "@/lib/db";
+import { playbackAccess } from "@/lib/playbackAccess";
+import { getDb, getSiteSettings } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 import { prepareIntroDownload } from "@/lib/introDownload";
 import { createReadStream } from "fs";
@@ -23,7 +24,7 @@ async function handle(request: Request, start: boolean) {
   try { user = getUserFromRequest(request); } catch { /* malformed token */ }
   if (!user) return Response.json({ error: "Sign in to download this episode." }, { status: 401, headers });
   // VIP can change after login. The database also checks membership expiry.
-  if (!isUserKeyActive(user.id).is_vip) return Response.json({ error: "An active VIP membership is required." }, { status: 403, headers });
+  if (!playbackAccess(request).can_download) return Response.json({ error: "Downloads require VIP, or enabled free downloads and an active key when required." }, { status: 403, headers });
   const query = new URL(request.url).searchParams;
   const url = query.get("url") || "";
   const known = getDb().prepare("SELECT 1 FROM downloads WHERE download_url = ? UNION ALL SELECT 1 FROM servers WHERE stream_url = ? LIMIT 1").get(url, url);

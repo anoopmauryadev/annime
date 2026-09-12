@@ -103,6 +103,23 @@ try {
   assert.equal((await call('/uploads/hls/fixture/360p.m3u8',guest)).status,403);
   const admin=db.prepare('SELECT * FROM admin_users LIMIT 1').get();
   const adminCookie=`admin_token=${auth.generateAdminToken(admin)}`;
+  assert.equal((await call('/api/downloads',login)).status,403);
+  assert.equal((await call('/api/admin/settings',adminCookie,{free_downloads_enabled:'1',key_system_enabled:'0'})).status,200);
+  assert.equal((await call('/api/downloads',login)).status,200);
+  const downloadId=database.createDownload({episode_id:episode.id,quality:'Source',download_url:'/uploads/videos/test.mkv'});
+  const downloadPath='/api/downloads/with-intro?url='+encodeURIComponent('/uploads/videos/test.mkv');
+  const fileResponse=await call(downloadPath,login);
+  assert.equal(fileResponse.status,200);assert.ok((await fileResponse.arrayBuffer()).byteLength>0);
+  assert.equal((await call(downloadPath,guest)).status,401);
+
+  assert.equal((await call('/api/downloads',guest)).status,401);
+  assert.equal((await (await call('/api/keys/status',login)).json()).can_download,true);
+  assert.equal((await call('/api/admin/settings',adminCookie,{free_downloads_enabled:'0',key_system_enabled:'1'})).status,200);
+  assert.equal((await call('/api/downloads',login)).status,403);
+  assert.equal((await call(downloadPath,login)).status,403);
+  db.prepare('DELETE FROM downloads WHERE id=?').run(downloadId);
+  console.log('PASS: free downloads default denied, admin enable allows signed-in users, guests denied, disable revokes access.');
+
   const labelForm=new FormData();labelForm.set('display_quality','720p');
   assert.equal((await fetch(base+'/api/admin/episodes/'+episode.id,{method:'PUT',headers:{cookie:adminCookie,origin:base},body:labelForm})).status,200);
   assert.equal(database.getEpisodeById(episode.id).display_quality,'720p');

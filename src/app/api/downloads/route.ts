@@ -1,4 +1,5 @@
-import { getAllDownloadsWithDetails, isUserKeyActive } from "@/lib/db";
+import { playbackAccess } from "@/lib/playbackAccess";
+import { getAllDownloadsWithDetails } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
@@ -15,8 +16,8 @@ export async function GET(request: Request) {
   }
 
   // Check VIP status from database (most up-to-date)
-  const membership = isUserKeyActive(userPayload.id);
-  if (!membership.is_vip) {
+  const access = playbackAccess(request);
+  if (!access.can_download) {
     return NextResponse.json(
       { error: "VIP membership required to access downloads. Upgrade your account to VIP to unlock downloads." },
       { status: 403 }

@@ -25,6 +25,7 @@ export function playbackAccess(request: Request, episodeId?: number) {
   const login_required = guest_mode !== "all" && !preview;
   const expires_at = member?.active ? member.expires_at : guest?.expires_at || null;
   return { user, active, is_vip: !!member?.is_vip, login_required, guest_mode,
+    can_download: !!user && (!!member?.is_vip || (settings.free_downloads_enabled === "1" && active)),
     allow_480p: !!member?.is_vip || settings.free_480p_enabled !== "0",
     original_enabled: member?.is_vip ? settings.vip_original_enabled !== "0" : settings.free_original_enabled === "1",
     can_play: active && (!login_required || !!user), key_system_disabled: settings.key_system_enabled === "0",
@@ -81,7 +82,7 @@ export function playbackServers(episodeId: number, access: ReturnType<typeof pla
       const master = url.replace(/[^/]+$/, 'master.m3u8');
       const hasLow = ['360p.m3u8', ...(access.allow_480p ? ['480p.m3u8'] : [])].some(name=>mediaExists(url.replace(/[^/]+$/,name)));
       if (!hasLow) return [];
-      const playable = mediaExists(master) ? master : url;
+      const playable = mediaExists(master) ? master : ['360p.m3u8', ...(access.allow_480p ? ['480p.m3u8'] : [])].map(name=>url.replace(/[^/]+$/,name)).find(mediaExists) || url;
       if (!access.is_vip && !/\/(master|360p|480p)\.m3u8$/.test(playable)) return [];
       if (!access.allow_480p && playable.endsWith('/480p.m3u8')) return [];
       return mediaExists(playable) ? [{...server, stream_url:playable, server_name:access.allow_480p?"360p / 480p":"360p"}] : [];

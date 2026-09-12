@@ -15,7 +15,7 @@ export async function GET(request: Request, ctx: RouteContext<'/api/episodes/[id
   
   const access = playbackAccess(request, id);
   const servers = playbackServers(id,access);
-  const downloads = access.is_vip ? getDownloadsByEpisode(id) : [];
+  const downloads = access.can_download ? getDownloadsByEpisode(id) : [];
   
   return NextResponse.json({ ...episode, servers, downloads }, {headers:{"Cache-Control":"private, no-store"}});
 }
