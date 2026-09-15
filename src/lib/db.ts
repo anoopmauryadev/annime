@@ -800,10 +800,16 @@ export function getSeasonsByAnime(animeId: number): SeasonRow[] {
 }
 
 export function createSeason(animeId: number, seasonNumber: number, title: string): number {
-  const result = getDb()
+  const db = getDb();
+  return db.transaction(() => {
+    if (db.prepare("SELECT id FROM seasons WHERE anime_id=? AND season_number=?").get(animeId, seasonNumber)) {
+      throw new Error("SEASON_ALREADY_EXISTS");
+    }
+    const result = db
     .prepare("INSERT INTO seasons (anime_id, season_number, title) VALUES (?, ?, ?)")
     .run(animeId, seasonNumber, title);
-  return result.lastInsertRowid as number;
+    return result.lastInsertRowid as number;
+  }).immediate();
 }
 
 export function deleteSeason(id: number): void {

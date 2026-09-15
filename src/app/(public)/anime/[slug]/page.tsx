@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Play, Star, Calendar, Share2, Film, Tv, Eye, Layers } from "lucide-react";
 import AnimeCard from "@/components/AnimeCard";
 import BookmarkButton from "@/components/BookmarkButton";
+import SeasonEpisodes from "@/components/SeasonEpisodes";
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
@@ -205,15 +206,9 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
                 <span className="text-xs text-[#ff640a] font-semibold">{seasons.length} Season(s)</span>
               </div>
 
-              {seasons.length === 0 && episodes.length === 0 && (
-                <div className="text-center py-12 text-gray-500 text-sm">
-                  Episodes will be uploaded soon. Stay tuned!
-                </div>
-              )}
-
+              <SeasonEpisodes key={anime.id} seasons={seasons}>
               {seasons.map((season) => {
                 const seasonEpisodes = episodes.filter((e) => e.season_id === season.id);
-                if (seasonEpisodes.length === 0) return null;
 
                 return (
                   <div key={season.id} className="space-y-3">
@@ -225,6 +220,7 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                      {seasonEpisodes.length === 0 && <p className="col-span-full py-8 text-sm text-gray-400">Episodes for this season will be uploaded soon.</p>}
                       {seasonEpisodes.map((ep) => (
                         <Link
                           key={ep.id}
@@ -261,6 +257,7 @@ export default async function AnimePage({ params }: { params: Promise<{ slug: st
                   </div>
                 );
               })}
+              </SeasonEpisodes>
             </div>
           </div>
 

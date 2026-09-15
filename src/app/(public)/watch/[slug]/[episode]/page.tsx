@@ -155,6 +155,7 @@ export default async function WatchPage({
           {/* Episode Navigator Sidebar */}
           <div className="lg:col-span-1">
             <EpisodeList
+              key={`${anime.id}-${seasonNum}`}
               seasons={seasons}
               episodes={episodes}
               currentAnimeSlug={anime.slug}

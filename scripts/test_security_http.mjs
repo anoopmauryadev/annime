@@ -125,6 +125,17 @@ try {
   assert.equal((await request("/api/auth/logout", { method: "POST", headers: { Origin: `http://127.0.0.1:${port}`, Cookie: login.headers["set-cookie"].join(";") } })).status, 200);
 
   const episodeBytes = await fs.readFile(path.join(temporary, "public/uploads/videos/episode.mp4"));
+  const seasonBody = { anime_id: episode.anime_id, season_number: 9876, title: 'Concurrent season test' };
+  const postSeason = body => request('/api/admin/seasons', {
+    method:'POST', headers:{...adminHeaders,'Content-Type':'application/json',Origin:`http://127.0.0.1:${port}`}, body:JSON.stringify(body),
+  });
+  const seasonResponses = await Promise.all([postSeason(seasonBody), postSeason(seasonBody)]);
+  assert.deepEqual(seasonResponses.map(response=>response.status).sort(),[200,409]);
+  assert.equal(db.prepare('SELECT COUNT(*) AS total FROM seasons WHERE anime_id=? AND season_number=9876').get(episode.anime_id).total,1);
+  assert.equal((await postSeason({...seasonBody,season_number:0})).status,400);
+  assert.equal((await postSeason({...seasonBody,season_number:1.5})).status,400);
+  db.prepare('DELETE FROM seasons WHERE anime_id=? AND season_number=9876').run(episode.anime_id);
+  console.log('PASS: concurrent season submissions create one row; duplicate and invalid season numbers rejected.');
   for (let index = 0; index < 2; index++) {
     const form = new FormData();
     const middle = Math.floor(episodeBytes.length / 2);

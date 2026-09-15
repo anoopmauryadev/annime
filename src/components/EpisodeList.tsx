@@ -2,6 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Play, Search } from "lucide-react";
+import SeasonPicker from "./SeasonPicker";
 
 export default function EpisodeList({
   seasons,
@@ -45,24 +46,8 @@ export default function EpisodeList({
           </span>
         </div>
 
-        {/* Season Tabs */}
-        {seasons.length > 1 && (
-          <div className="flex overflow-x-auto gap-1.5 hide-scrollbar pb-2 mb-2">
-            {seasons.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => setActiveSeason(s.season_number)}
-                className={`px-3 py-1 text-xs font-bold rounded whitespace-nowrap transition-all ${
-                  activeSeason === s.season_number
-                    ? "bg-[#ff640a] text-white shadow-md shadow-[#ff640a]/30"
-                    : "bg-white/5 text-gray-400 hover:text-white hover:bg-white/10"
-                }`}
-              >
-                {s.title || `Season ${s.season_number}`}
-              </button>
-            ))}
-          </div>
-        )}
+        {seasons.length > 0 && <SeasonPicker seasons={seasons} value={activeSeason}
+          onChange={season => { setActiveSeason(season); setSearchFilter(""); }} />}
 
         {/* Quick Episode Search Input */}
         <div className="relative">

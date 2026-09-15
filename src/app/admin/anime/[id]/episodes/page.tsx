@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { Trash2, PlusCircle, ChevronDown, ChevronUp, UploadCloud, ArrowLeft, Server as ServerIcon, Download, Video, Film, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
@@ -24,6 +24,9 @@ export default function EpisodesPage() {
   // Add season form
   const [newSeasonNum, setNewSeasonNum] = useState(1);
   const [newSeasonTitle, setNewSeasonTitle] = useState('');
+  const [addingSeason, setAddingSeason] = useState(false);
+  const seasonRequest = useRef(false);
+  const [seasonError, setSeasonError] = useState('');
 
   // Add episode form
   const [newEpNum, setNewEpNum] = useState(1);
@@ -71,13 +74,13 @@ export default function EpisodesPage() {
   const fetchSeasons = useCallback(async () => {
     try {
       const res = await fetch(`/api/admin/seasons?anime_id=${animeId}`);
+      if (!res.ok) throw new Error('Could not load seasons');
       const data = await res.json();
       setSeasons(data);
-      if (data.length > 0 && !selectedSeason) {
-        setSelectedSeason(data[0].id);
-      }
+      setNewSeasonNum(Math.max(0, ...data.map((s: Season) => s.season_number)) + 1);
+      setSelectedSeason(current => data.some((s: Season) => s.id === current) ? current : data[0]?.id ?? null);
     } catch { /* ignore */ }
-  }, [animeId, selectedSeason]);
+  }, [animeId]);
 
   const fetchEpisodes = useCallback(async () => {
     if (!selectedSeason) return;
@@ -100,15 +103,25 @@ export default function EpisodesPage() {
   }, [selectedSeason, fetchEpisodes]);
 
   const addSeason = async () => {
-    if (!newSeasonTitle.trim()) return;
-    await adminFetch('/api/admin/seasons', {
+    if (seasonRequest.current) return;
+    seasonRequest.current = true;
+    setAddingSeason(true); setSeasonError('');
+    try {
+    const response = await adminFetch('/api/admin/seasons', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ anime_id: parseInt(animeId), season_number: newSeasonNum, title: newSeasonTitle }),
     });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Could not add season');
     setNewSeasonTitle('');
-    setNewSeasonNum(seasons.length + 2);
+    setSelectedSeason(result.id);
     await fetchSeasons();
+    } catch(error) {
+      setSeasonError(error instanceof Error ? error.message : 'Could not add season');
+    } finally {
+      seasonRequest.current = false; setAddingSeason(false);
+    }
   };
 
   const deleteSeason = async (sid: number) => {
@@ -424,9 +437,10 @@ export default function EpisodesPage() {
               <input type="number" min="1" value={newSeasonNum} onChange={e => setNewSeasonNum(parseInt(e.target.value) || 1)} placeholder="#" className="w-16 bg-[#0f0f1a] border border-slate-800 rounded-lg p-2 text-white text-center text-sm outline-none" />
               <input type="text" value={newSeasonTitle} onChange={e => setNewSeasonTitle(e.target.value)} placeholder="Season Title" className="flex-1 bg-[#0f0f1a] border border-slate-800 rounded-lg p-2 text-white text-sm outline-none" />
             </div>
-            <button onClick={addSeason} className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
-              <PlusCircle size={16} /> Add Season
+            <button type="button" disabled={addingSeason} onClick={addSeason} className="w-full py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
+              <PlusCircle size={16} /> {addingSeason ? 'Adding…' : 'Add Season'}
             </button>
+            {seasonError && <p role="alert" className="text-sm text-red-400">{seasonError}</p>}
           </div>
         </div>
 
