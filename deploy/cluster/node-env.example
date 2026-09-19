@@ -1,0 +1,12 @@
+# Populate keys from Admin > Media Servers > Add server. Never commit real values.
+NODE_ID=REPLACE_WITH_NODE_ID
+NODE_API_KEY=REPLACE_WITH_UNIQUE_API_KEY
+MEDIA_SIGNING_KEY=REPLACE_WITH_UNIQUE_SIGNING_KEY
+SITE_ORIGIN=https://hindianimezone.fun
+# Dedicated DNS-only worker origin, same main Next.js app, trusted TLS certificate.
+# This avoids CDN upload-size/time limits for large source/artifact transfers.
+CLUSTER_ORIGIN=https://worker-origin.example.com
+PORT=4000
+BIND_HOST=127.0.0.1
+MEDIA_DIR=/var/lib/annime-media/media
+TRANSCODE_WORK_DIR=/var/lib/annime-media/work

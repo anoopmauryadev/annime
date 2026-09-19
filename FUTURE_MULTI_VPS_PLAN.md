@@ -2,7 +2,23 @@
 
 Saved: 10 September 2026
 
-Status: Planning only. Multi-server implementation and deployment have not started.
+Status (18 September 2026): Local implementation is in progress for stages 2–5;
+live deployment, OS-specific resource verification and cluster capacity tests are
+pending. Current rollout includes Ubuntu VPS and Windows machines accessed by RDP.
+Stage 7 is explicitly excluded by the owner.
+
+Implementation and deployment details: [MULTI_VPS_DEPLOYMENT.md](MULTI_VPS_DEPLOYMENT.md).
+Do not enable the cluster until the staged rollout checks in that document pass.
+
+| Stage | Current evidence |
+| --- | --- |
+| 1. Inventory and main VPS verification | Live host addresses/access are still needed. |
+| 2. Protected media node | Local node, per-file capabilities, verified transfers and range tests implemented. Live TLS rollout pending. |
+| 3. Routing and failover | Health/file-based routing, session drain, Hls.js retry and protected local fallback implemented; real network failure test pending. |
+| 4. Distributed conversion | Persistent rendition jobs, leases, retries, cancellation and early publication implemented. Linux/Windows workers require host testing. |
+| 5. Controls and monitoring | Admin node controls, CPU/memory/free-disk/media-traffic display and quota adapters implemented. Full disk-latency/NIC/CPU-credit metrics remain pending. |
+| 6. Acceptance/load tests | Local security and controller tests exist; real multi-machine capacity/failure tests have not run. |
+| 7. Bunny/HA | Excluded from this implementation. |
 
 ## Owner's requirements and budget
 

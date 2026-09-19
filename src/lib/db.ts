@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import { initializeCluster } from '../../scripts/cluster/schema.cjs';
 
 const DB_PATH = path.join(process.cwd(), "data", "anime.db");
 
@@ -18,6 +19,7 @@ export function getDb(): Database.Database {
     _db.pragma("journal_mode = WAL");
     _db.pragma("foreign_keys = ON");
     initializeDatabase(_db);
+    initializeCluster(_db);
   }
   return _db;
 }
@@ -234,6 +236,29 @@ function initializeDatabase(db: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_vip_codes_code ON vip_codes(code);
     CREATE INDEX IF NOT EXISTS idx_vip_codes_used ON vip_codes(is_used);
+
+    CREATE TABLE IF NOT EXISTS media_nodes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      api_key TEXT NOT NULL,
+      status TEXT DEFAULT 'active',
+      last_heartbeat TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS media_replicas (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      node_id INTEGER NOT NULL,
+      episode_id INTEGER NOT NULL,
+      rendition TEXT NOT NULL,
+      status TEXT DEFAULT 'ready',
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (node_id) REFERENCES media_nodes(id) ON DELETE CASCADE,
+      FOREIGN KEY (episode_id) REFERENCES episodes(id) ON DELETE CASCADE,
+      UNIQUE(node_id, episode_id, rendition)
+    );
+    CREATE INDEX IF NOT EXISTS idx_media_replicas_episode ON media_replicas(episode_id);
   `);
 
   const transcodeColumns = db.prepare("PRAGMA table_info(transcode_jobs)").all() as { name: string }[];

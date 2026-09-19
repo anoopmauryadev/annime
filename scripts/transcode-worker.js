@@ -6,6 +6,7 @@ const { spawn } = require("child_process");
 const root = process.cwd();
 require("@next/env").loadEnvConfig(root);
 const db = new Database(path.join(root, "data", "anime.db"));
+require('./cluster/schema.cjs').initializeCluster(db);
 db.pragma("journal_mode = WAL");
 db.pragma("busy_timeout = 5000");
 
@@ -56,6 +57,7 @@ function updateJob(id, values) {
 }
 
 const claimNext = db.transaction(() => {
+  if(db.prepare("SELECT value FROM site_settings WHERE key='cluster_transcoding_enabled'").get()?.value==='1')return null;
   const job = db.prepare(`SELECT * FROM transcode_jobs
     WHERE status='pending' AND attempts < 3 AND input_path IS NOT NULL AND output_dir_name IS NOT NULL
     ORDER BY id LIMIT 1`).get();
@@ -120,6 +122,7 @@ async function processJob(job) {
     const {uploadHlsDirectory}=await import('./bunny-storage.mjs');
     await uploadHlsDirectory(output,job.output_dir_name);
   }
+
   assertActive();
   updateJob(job.id, { status: "complete", progress_text: `Done! ${completed.join(", ")} ready.` });
   log("info", "Job completed", { jobId: job.id, serverId: job.server_id });

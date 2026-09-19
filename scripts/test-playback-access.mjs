@@ -13,7 +13,7 @@ let server, db, browser;
 async function load(file, overrides={}) {
   const code=ts.transpileModule(await fs.readFile(path.join(root,file),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
   const m={exports:{}};
-  new Function('require','module','exports',code)(id=>overrides[id] || require(id),m,m.exports);
+  new Function('require','module','exports',code)(id=>overrides[id] || (id.startsWith('.') ? createRequire(path.join(root,file))(id) : require(id)),m,m.exports);
   return m.exports;
 }
 const base='http://127.0.0.1:3198';

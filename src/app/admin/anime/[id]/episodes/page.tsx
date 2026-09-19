@@ -264,7 +264,7 @@ export default function EpisodesPage() {
                   ...prev,
                   [s.id]: job,
                 }));
-                if (job.status === 'processing' || job.status === 'pending') {
+                if (job.status === 'processing' || job.status === 'pending' || job.status === 'distributed') {
                   pollTranscodeJob(s.id);
                 }
               }
@@ -682,7 +682,7 @@ export default function EpisodesPage() {
                               }}>Retry</button>}
                               {/* Transcode Status Badge */}
                               {job ? (
-                                job.status === 'processing' ? (
+                                (job.status === 'processing' || job.status === 'distributed') ? (
                                   <span className="text-[11px] bg-violet-500/20 text-violet-300 px-2 py-0.5 rounded flex items-center gap-1 font-medium border border-violet-500/30">
                                     <Loader2 size={11} className="animate-spin text-violet-400" /> {job.progress_text}
                                   </span>

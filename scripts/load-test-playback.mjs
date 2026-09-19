@@ -1,10 +1,14 @@
 // Run from a separate machine. Credentials stay in environment variables.
 import { performance } from 'node:perf_hooks';
+import {randomBytes} from 'node:crypto';
 
 const target = process.env.LOAD_TEST_PLAYLIST;
 const cookie = process.env.LOAD_TEST_COOKIE;
 if (!target) throw new Error('Set LOAD_TEST_PLAYLIST to a media/quality .m3u8 URL.');
 const origin = new URL(target).origin;
+const mediaOrigins=new Set((process.env.LOAD_TEST_MEDIA_ORIGINS||'').split(',').filter(Boolean).map(value=>{
+  const u=new URL(value);if(u.protocol!=='https:'||u.username||u.password)throw Error('Media origins must use HTTPS');return u.origin;
+}));
 const levels = (process.env.LOAD_TEST_LEVELS || '25,50,100').split(',').map(Number)
   .filter((value) => Number.isInteger(value) && value > 0 && value <= 1000);
 const controller = new AbortController();
@@ -13,12 +17,18 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 let bytes = 0;
 const byteLimit = 2 * 1024 ** 3;
 
-async function request(url) {
+async function request(url, session='') {
   if (new URL(url).origin !== origin) throw new Error('Cross-origin media is not supported; credentials were not sent.');
-  const response = await fetch(url, {
-    ...(cookie ? { headers: { Cookie: cookie } } : {}), redirect: 'error',
+  let response = await fetch(url, {
+    ...((cookie||session) ? { headers: { Cookie: [cookie,session?`media_session=${session}`:''].filter(Boolean).join('; ') } } : {}), redirect: 'manual',
     signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]),
   });
+  if([302,307].includes(response.status)){
+    const destination=new URL(response.headers.get('location'),url);await response.body?.cancel();
+    if(!mediaOrigins.has(destination.origin)||!destination.pathname.startsWith('/media/'))throw Error('Unapproved media redirect');
+    // Never forward website cookies or authentication to media origins.
+    response=await fetch(destination,{redirect:'error',signal:AbortSignal.any([controller.signal,AbortSignal.timeout(10000)])});
+  }
   if (!response.ok) { await response.body?.cancel(); throw new Error(`HTTP ${response.status}`); }
   const chunks = [];
   let size = 0;
@@ -61,13 +71,14 @@ async function main() {
     const start = performance.now();
     const deadline = start + 60000;
     await Promise.all(Array.from({ length: viewers }, async (_, viewer) => {
+      const session=randomBytes(16).toString('hex');
       await sleep((viewer / viewers) * 2000);
       let index = Math.floor(viewer * segments.length / viewers);
       while (!controller.signal.aborted && performance.now() < deadline) {
         const segment = segments[index++ % segments.length];
         const began = performance.now();
         try {
-          await request(segment.url);
+          await request(segment.url,session);
           const elapsed = performance.now() - began;
           samples.push(elapsed);
           if (elapsed > segment.duration * 1000) late++;

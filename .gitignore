@@ -2,6 +2,9 @@
 
 # dependencies
 /node_modules
+**/node_modules/
+deploy/media-node/media/
+deploy/media-node/work/
 /.pnp
 .pnp.*
 .yarn/*
@@ -33,6 +36,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+media-node.env
+data/cluster-staging/
+data/remote-work/
+data/node-logs/
 
 # vercel
 .vercel

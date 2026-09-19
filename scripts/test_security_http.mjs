@@ -20,7 +20,7 @@ async function load(relative, overrides = {}) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
   }).outputText;
   const loaded = { exports: {} };
-  new Function("require", "module", "exports", code)((id) => overrides[id] || require(id), loaded, loaded.exports);
+  new Function("require", "module", "exports", code)((id) => overrides[id] || (id.startsWith('.') ? createRequire(path.join(root, relative))(id) : require(id)), loaded, loaded.exports);
   return loaded.exports;
 }
 function request(url, { method = "GET", headers = {}, body } = {}) {

@@ -1,0 +1,24 @@
+[Unit]
+Description=Anime Zone protected media service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=annime-media
+WorkingDirectory=/opt/annime
+EnvironmentFile=/etc/annime/media-node.env
+ExecStart=/usr/bin/node deploy/media-node/server.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/annime-media
+UMask=0077
+MemoryMax=512M
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

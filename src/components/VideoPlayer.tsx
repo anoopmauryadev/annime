@@ -455,6 +455,18 @@ function EpisodeVideoPlayer({ servers: initialServers, animeId, episodeId, title
       hls.loadSource(embedSrc);
       hls.attachMedia(video);
 
+      let lastFailover = 0;
+      let stopped = false;
+      hls.on(Hls.Events.ERROR, (_, error) => {
+        if (error.type !== Hls.ErrorTypes.NETWORK_ERROR || !error.frag || Date.now() - lastFailover < 10000) return;
+        lastFailover = Date.now();
+        // Retry the original authorized URL at the same playback position.
+        // The gateway excludes the failed replica for this session only.
+        fetch('/api/media/failover', { method: 'POST' }).then(() => {
+          if (!stopped && error.fatal) hls.startLoad(video.currentTime);
+        }).catch(() => {});
+      });
+
       hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
         const sourceHeight = Number(embedSrc.match(/\/(\d+)p\.m3u8(?:$|\?)/)?.[1]) || 0;
         const levels: QualityLevel[] = data.levels.map((lvl) => {
@@ -478,6 +490,7 @@ function EpisodeVideoPlayer({ servers: initialServers, animeId, episodeId, title
       });
 
       return () => {
+        stopped = true;
         hls.destroy();
         hlsRef.current = null;
       };

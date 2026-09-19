@@ -14,10 +14,10 @@ function renditionReady(file) {
       /^[a-zA-Z0-9_-]+\.ts$/.test(name)&&fs.statSync(path.join(path.dirname(file),name)).size>0);
   }catch{return false;}
 }
-const probe = input => new Promise((resolve,reject) => execFile('ffprobe',['-v','error','-show_streams','-of','json',input],{maxBuffer:1024*1024,timeout:30000},(e,out)=> {
-  if(e) return reject(e); try {resolve(JSON.parse(out).streams);} catch(e) {reject(e);}
+const probe = input => new Promise((resolve,reject) => execFile('ffprobe',['-v','error','-show_streams','-show_format','-of','json',input],{maxBuffer:1024*1024,timeout:30000},(e,out)=> {
+  if(e) return reject(e); try {const info=JSON.parse(out);info.streams.durationSeconds=Number(info.format?.duration);resolve(info.streams);} catch(e) {reject(e);}
 }));
-async function processMedia({input,output,threads,run,progress,publish,sourceQuality=0,inspect=()=>{}}) {
+async function processMedia({input,output,threads,run,progress,publish,sourceQuality=0,inspect=()=>{},onlyQuality=null}) {
   const sourceStreams=await probe(input);
   const sourceVideo=sourceStreams.find(s=>s.codec_type==='video');
   if(!sourceVideo)throw new Error('No video stream');
@@ -27,8 +27,9 @@ async function processMedia({input,output,threads,run,progress,publish,sourceQua
   const safeVideo=sourceVideo.codec_name==='h264' && ['yuv420p','yuvj420p'].includes(sourceVideo.pix_fmt);
   const selectedHeight=sourceQuality || (safeVideo && [360,480].includes(sourceVideo.height) ? sourceVideo.height : 0);
   sourceQuality=selectedHeight;
-  const selected=sourceQuality ? {name:`${sourceQuality}p`,width:sourceVideo.width,height:sourceVideo.height,bitrate:`${Math.ceil(Number(sourceVideo.bit_rate || 5000000)/1000)}k`,audioBitrate:'128k'} : null;
-  const workProfiles=selected ? [selected,...profiles.filter(p=>p.height<sourceQuality)] : profiles.filter(p=>p.height<=sourceVideo.height);
+  const selected=!onlyQuality && sourceQuality ? {name:`${sourceQuality}p`,width:sourceVideo.width,height:sourceVideo.height,bitrate:`${Math.ceil(Number(sourceVideo.bit_rate || 5000000)/1000)}k`,audioBitrate:'128k'} : null;
+  const workProfiles=onlyQuality ? profiles.filter(p=>p.name===onlyQuality && p.height<=sourceVideo.height) : selected ? [selected,...profiles.filter(p=>p.height<sourceQuality)] : profiles.filter(p=>p.height<=sourceVideo.height);
+  if(onlyQuality && onlyQuality!=='original' && !workProfiles.length)return [];
   const completed=[];
   for(const p of workProfiles) {
     const playlist=path.join(output,`${p.name}.m3u8`);
@@ -36,7 +37,7 @@ async function processMedia({input,output,threads,run,progress,publish,sourceQua
     if(!renditionReady(playlist)) {
       progress(selected && p.height===sourceQuality && safeVideo ? `Packaging ${p.name} without video re-encoding...` : `Transcoding ${p.name}...`);
       const temp=path.join(output,`.${p.name}-work`); fs.mkdirSync(temp,{recursive:true});
-      const sameSource=selected && p.height===sourceQuality;
+      const sameSource=(selected && p.height===sourceQuality) || (onlyQuality && p.height===sourceVideo.height);
       const copyVideo=sameSource && safeVideo;
       const videoArgs=copyVideo ? ['-c:v','copy'] : sameSource ? ['-c:v','libx264','-pix_fmt','yuv420p','-preset','veryfast','-crf','20','-threads',String(threads)] : [
         '-vf',`scale=${p.width}:${p.height}:force_original_aspect_ratio=decrease,pad=${p.width}:${p.height}:(ow-iw)/2:(oh-ih)/2,setsar=1`,
@@ -46,6 +47,9 @@ async function processMedia({input,output,threads,run,progress,publish,sourceQua
         ...(sameSource && sourceStreams.find(s=>s.codec_type==='audio')?.codec_name==='aac' ? ['-c:a','copy'] : ['-c:a','aac','-b:a',p.audioBitrate,'-ac','2']),
         '-hls_time','4','-hls_playlist_type','vod',
         '-hls_segment_filename',path.join(temp,`${p.name}_%05d.ts`),path.join(temp,`${p.name}.m3u8`)]);
+      const readyPlaylist=path.join(temp,`${p.name}.m3u8`);
+      const seconds=[...fs.readFileSync(readyPlaylist,'utf8').matchAll(/#EXTINF:([\d.]+)/g)].reduce((sum,m)=>sum+Number(m[1]),0);
+      if(!renditionReady(readyPlaylist) || (sourceStreams.durationSeconds>0 && Math.abs(seconds-sourceStreams.durationSeconds)>Math.max(2,sourceStreams.durationSeconds*.02)))throw Error('Incomplete rendition duration; publication refused');
       for(const name of fs.readdirSync(temp).filter(n=>n.endsWith('.ts'))) fs.renameSync(path.join(temp,name),path.join(output,name));
       fs.renameSync(path.join(temp,`${p.name}.m3u8`),playlist);
       fs.rmdirSync(temp);
@@ -55,6 +59,7 @@ async function processMedia({input,output,threads,run,progress,publish,sourceQua
     publish();
   }
   // Preserve source resolution. Copy browser-safe video; encode unsupported codecs only.
+  if(onlyQuality && onlyQuality!=='original')return completed.map(p=>p.name);
   const original=path.join(output,'original.mp4');
   if(!fs.existsSync(original)) {
     progress('Preparing Original Quality (VIP)...');
@@ -69,6 +74,8 @@ async function processMedia({input,output,threads,run,progress,publish,sourceQua
       ...(copyVideo ? ['-c:v','copy'] : ['-vf','scale=trunc(iw/2)*2:trunc(ih/2)*2','-c:v','libx264','-pix_fmt','yuv420p','-preset','veryfast','-crf','20','-threads',String(threads)]),
       ...(audio?.codec_name==='aac' ? ['-c:a','copy'] : ['-c:a','aac','-b:a','128k','-ac','2']),
       '-movflags','+faststart',temp]);
+    const prepared=await probe(temp);
+    if(sourceStreams.durationSeconds>0 && (!prepared.durationSeconds || Math.abs(prepared.durationSeconds-sourceStreams.durationSeconds)>Math.max(2,sourceStreams.durationSeconds*.02)))throw Error('Incomplete original duration; publication refused');
     fs.renameSync(temp,original);
   }
   return completed.map(p=>p.name);

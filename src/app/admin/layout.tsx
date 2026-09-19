@@ -40,6 +40,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { name: 'Key System (Shortener)', href: '/admin/keys', icon: Key },
     { name: 'VIP Codes (Redeem)', href: '/admin/vip-codes', icon: Ticket },
     { name: 'System Status', href: '/admin/system', icon: MonitorCog },
+    { name: 'Media Servers', href: '/admin/media-nodes', icon: MonitorCog },
     { name: 'Settings (Password)', href: '/admin/settings', icon: Settings },
   ];
 

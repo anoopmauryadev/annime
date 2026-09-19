@@ -1,0 +1,31 @@
+[Unit]
+Description=Anime Zone distributed transcode worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=annime-media
+WorkingDirectory=/opt/annime
+EnvironmentFile=/etc/annime/media-node.env
+ExecStart=/usr/bin/node scripts/cluster-worker.cjs
+Restart=on-failure
+RestartSec=10
+Delegate=cpu
+CPUAccounting=true
+CPUQuota=200%
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/annime-media
+UMask=0077
+MemoryMax=4G
+TasksMax=128
+TimeoutStopSec=30
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

@@ -7,6 +7,9 @@ export async function cancelTranscodes(ids: number[]) {
   if (!ids.length) return;
   const db=getDb();
   const placeholders=ids.map(()=>'?').join(',');
+  // Revoking leases blocks any later remote artifact publication.
+  db.prepare(`UPDATE cluster_jobs SET state='cancelled',expires=0 WHERE parent_id IN (${placeholders}) AND state IN ('pending','running')`).run(...ids);
+  db.prepare(`UPDATE transcode_jobs SET status='cancelled' WHERE id IN (${placeholders}) AND status='distributed'`).run(...ids);
   db.prepare(`UPDATE transcode_jobs SET status=CASE WHEN status='processing' THEN 'cancelling' ELSE 'cancelled' END WHERE id IN (${placeholders}) AND status IN ('pending','processing','failed')`).run(...ids);
   for(let attempt=0;attempt<100;attempt++) {
     const waiting=db.prepare(`SELECT id FROM transcode_jobs WHERE id IN (${placeholders}) AND status='cancelling'`).all(...ids);

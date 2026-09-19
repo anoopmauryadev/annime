@@ -3,6 +3,7 @@ import { createReadStream } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import { Readable } from "stream";
+import { remoteMedia } from "@/lib/mediaCluster";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,7 +20,8 @@ export async function GET(request: Request, context: { params: Promise<{ path: s
     return Response.json({ error: "Invalid media path" }, { status: 400 });
   }
   const fileName = parts.at(-1) || "";
-  const access = playbackAccess(request, mediaEpisodeId(parts));
+  const episodeId = mediaEpisodeId(parts);
+  const access = playbackAccess(request, episodeId);
   if (parts.some(part => part.startsWith('.'))) return new Response(null,{status:404});
   const freeHls = parts[0] === 'hls' && parts.length === 3 && /^(master\.m3u8|(?:360p|480p)(?:\.m3u8|_\d+\.ts))$/.test(fileName);
   if (!access.can_play) return Response.json({error:access.active ? "Login required" : "Active key required"},{status:403});
@@ -28,12 +30,21 @@ export async function GET(request: Request, context: { params: Promise<{ path: s
   if (!freeHls && !highPlayback && !access.is_vip) return Response.json({error:"VIP required"},{status:403});
   if (!access.allow_480p && /^480p[_.]/.test(fileName)) return Response.json({error:"480p requires VIP"},{status:403});
   if ((parts[0] === 'videos' || fileName === 'original.mp4') && !access.original_enabled) return Response.json({error:"Original playback disabled"},{status:403});
-  const relative = parts.join(path.sep);
+  const relative = parts.join('/');
+
+  // Playlists stay on the authorization gateway; every child request is checked
+  // again. Only individually authorized bytes are redirected to a replica.
+  if (parts[0] === 'hls' && /\.(ts|mp4)$/.test(fileName)) {
+    const remote = remoteMedia(request, relative);
+    if (remote) return remote;
+  }
+
+  // Fallback to local file serving
   const roots = [path.join(process.cwd(), "data", "media"), path.join(process.cwd(), "public", "uploads")];
   let file = "";
   for (const root of roots) {
     try {
-      const candidate = await fs.realpath(path.join(root, relative));
+      const candidate = await fs.realpath(path.join(root, path.join(...parts)));
       const canonicalRoot = await fs.realpath(root);
       if (candidate.startsWith(canonicalRoot + path.sep) && (await fs.stat(candidate)).isFile()) { file = candidate; break; }
     } catch {}
