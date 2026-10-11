@@ -4,6 +4,7 @@ import fs from "fs/promises";
 import path from "path";
 import { Readable } from "stream";
 import { remoteMedia } from "@/lib/mediaCluster";
+import { cloudKeyFor, cloudText, signedMediaUrl, signedPlaylist } from "@/lib/cloudMedia";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,19 @@ const contentTypes: Record<string, string> = {
   ".mp4": "video/mp4", ".webm": "video/webm", ".mkv": "video/x-matroska",
   ".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t", ".vtt": "text/vtt",
 };
+
+// Never expose old HD variants through the free adaptive playlist.
+function freeMaster(text: string, allow480p: boolean): Response {
+  const lines=text.split(/\r?\n/);
+  const selected=['#EXTM3U','#EXT-X-VERSION:3'];
+  for(let i=0;i<lines.length-1;i++) {
+    // AWS MediaConvert names variants master_360p.m3u8; viewers always request /360p.m3u8.
+    const variant=/^(?:master_)?(360p|480p)\.m3u8$/.exec(lines[i+1].trim())?.[1];
+    if(lines[i].startsWith('#EXT-X-STREAM-INF:') && variant && (allow480p || variant === '360p')) selected.push(lines[i],`${variant}.m3u8`);
+  }
+  if(selected.length===2) return Response.json({error:'Video processing'},{status:503});
+  return new Response(selected.join('\n')+'\n',{headers:{'Content-Type':'application/vnd.apple.mpegurl','Cache-Control':'private, no-store'}});
+}
 
 export async function GET(request: Request, context: { params: Promise<{ path: string[] }> }) {
   const parts = (await context.params).path;
@@ -32,6 +46,19 @@ export async function GET(request: Request, context: { params: Promise<{ path: s
   if ((parts[0] === 'videos' || fileName === 'original.mp4') && !access.original_enabled) return Response.json({error:"Original playback disabled"},{status:403});
   const relative = parts.join('/');
 
+  // Stored on AWS: authorization already passed, so hand out short-lived signed links.
+  const cloudKey = cloudKeyFor('/uploads/' + relative);
+  if (cloudKey) {
+    try {
+      if (fileName === 'master.m3u8') return freeMaster(await cloudText(cloudKey), access.allow_480p);
+      if (fileName.endsWith('.m3u8')) return new Response(await signedPlaylist(cloudKey), {headers:{'Content-Type':'application/vnd.apple.mpegurl','Cache-Control':'private, no-store'}});
+      return new Response(null,{status:302,headers:{Location:await signedMediaUrl(cloudKey),'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'}});
+    } catch (error) {
+      console.error('[Media] Cloud delivery failed', relative, error);
+      return Response.json({error:'Media temporarily unavailable'},{status:502});
+    }
+  }
+
   // Playlists stay on the authorization gateway; every child request is checked
   // again. Only individually authorized bytes are redirected to a replica.
   if (parts[0] === 'hls' && /\.(ts|mp4)$/.test(fileName)) {
@@ -51,16 +78,7 @@ export async function GET(request: Request, context: { params: Promise<{ path: s
   }
   if (!file) return Response.json({ error: "Media not found" }, { status: 404 });
 
-  if (fileName === 'master.m3u8') {
-    // Never expose old HD variants through the free adaptive playlist.
-    const lines=(await fs.readFile(file,'utf8')).split(/\r?\n/);
-    const selected=['#EXTM3U','#EXT-X-VERSION:3'];
-    for(let i=0;i<lines.length-1;i++) {
-      if(lines[i].startsWith('#EXT-X-STREAM-INF:') && /^(360p|480p)\.m3u8$/.test(lines[i+1].trim()) && (access.allow_480p || lines[i+1].trim() === '360p.m3u8')) selected.push(lines[i],lines[i+1]);
-    }
-    if(selected.length===2) return Response.json({error:'Video processing'},{status:503});
-    return new Response(selected.join('\n')+'\n',{headers:{'Content-Type':'application/vnd.apple.mpegurl','Cache-Control':'private, no-store'}});
-  }
+  if (fileName === 'master.m3u8') return freeMaster(await fs.readFile(file,'utf8'), access.allow_480p);
   const size = (await fs.stat(file)).size;
   const range = request.headers.get("range");
   let start = 0, end = size - 1;

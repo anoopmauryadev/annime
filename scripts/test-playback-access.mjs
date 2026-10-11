@@ -26,7 +26,8 @@ try {
   process.chdir(temp); process.env.ADMIN_SECRET_KEY='isolated-playback-test-secret-32-characters';
   const database=await load('src/lib/db.ts'); db=database.getDb();
   const auth=await load('src/lib/auth.ts',{'@/lib/db':database});
-  const accessLib=await load('src/lib/playbackAccess.ts',{'./db':database,'./auth':auth});
+  const cloudMedia=await load('src/lib/cloudMedia.ts',{'./db':database});
+  const accessLib=await load('src/lib/playbackAccess.ts',{'./db':database,'./auth':auth,'./cloudMedia':cloudMedia});
   const user=database.createUser({username:'playback_test',email:'playback@example.invalid',password:'fixture-password'});
   const login=`user_token=${auth.generateUserToken(user)}`;
   const episode=db.prepare('SELECT * FROM episodes LIMIT 1').get();
@@ -112,7 +113,7 @@ process.on('SIGTERM',()=>{fs.writeFileSync(${JSON.stringify(ended)},'stopped');p
   try {
     for(let i=0;!require('fs').existsSync(began);i++){if(i>100)throw Error('Worker did not begin cancellation fixture');await new Promise(r=>setTimeout(r,100));}
     const cancels=await load('src/lib/cancelTranscodes.ts',{'./db':database});
-    const cleanup=await load('src/lib/fileCleanup.ts',{'@/lib/db':database,'./cancelTranscodes':cancels});
+    const cleanup=await load('src/lib/fileCleanup.ts',{'@/lib/db':database,'./cancelTranscodes':cancels,'@/lib/cloudMedia':cloudMedia});
     await cleanup.cleanupServerFiles(cancelServer);
     assert.ok(require('fs').existsSync(ended));
     assert.ok(!require('fs').existsSync(cancelInput));

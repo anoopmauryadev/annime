@@ -1,6 +1,7 @@
 import { getSiteSettings, setSiteSettings } from "@/lib/db";
 import { requireAdminAuth } from "@/lib/auth";
 import { NextResponse } from "next/server";
+import * as aws from "../../../../../scripts/cloud/aws.cjs";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,21 @@ export async function POST(request: Request) {
     for (const field of ['free_downloads_enabled','free_480p_enabled','vip_original_enabled','free_original_enabled','playback_login_required']) {
       if (field in body && !['0','1'].includes(body[field])) return NextResponse.json({error:`Invalid ${field}`},{status:400});
     }
+    for (const field of ['cloud_sync_enabled','cloud_delete_local']) {
+      if (field in body && !['0','1'].includes(body[field])) return NextResponse.json({error:`Invalid ${field}`},{status:400});
+    }
+    // AWS options can only be switched on once the server has the matching AWS settings.
+    const cloud = aws.config();
+    for (const [field, values, needs, label] of [
+      ['upload_target', ['vps','s3'], cloud.storageReady, 'AWS_REGION and AWS_S3_BUCKET'],
+      ['playback_source', ['vps','cloud'], cloud.storageReady, 'AWS_REGION and AWS_S3_BUCKET'],
+      ['transcode_engine', ['vps','mediaconvert'], cloud.mediaConvertReady, 'MEDIACONVERT_ROLE_ARN'],
+    ] as const) {
+      if (!(field in body)) continue;
+      if (!(values as readonly string[]).includes(body[field])) return NextResponse.json({error:`Invalid ${field}`},{status:400});
+      if (body[field] !== 'vps' && !needs) return NextResponse.json({error:`Set ${label} in .env.local and restart first`},{status:400});
+    }
+    if (body.cloud_sync_enabled === '1' && !cloud.storageReady) return NextResponse.json({error:'Set AWS_REGION and AWS_S3_BUCKET in .env.local and restart first'},{status:400});
     if ('playback_guest_mode' in body && !['login','all','preview'].includes(body.playback_guest_mode)) return NextResponse.json({error:'Invalid guest mode'},{status:400});
     if ('playback_login_required' in body && !('playback_guest_mode' in body)) body.playback_guest_mode=body.playback_login_required === '0' ? 'all' : 'login';
     if ('playback_guest_mode' in body) body.playback_login_required=body.playback_guest_mode === 'all' ? '0' : '1';

@@ -56,8 +56,9 @@ export async function POST(request: Request) {
         videoUrl = await saveUploadedFile(videoFile, "videos");
       }
 
-      const path = await import("path");
-      const absoluteVideoPath = path.join(process.cwd(), "public", videoUrl);
+      // Local VPS file, or an object the browser uploaded straight to S3.
+      const { resolveUploadedVideo } = await import("@/lib/cloudMedia");
+      const { absolutePath: absoluteVideoPath, sourceKey } = await resolveUploadedVideo(videoUrl);
       const serverName = (formData.get("server_name") as string) || "Multi-Quality HD (2K / 1080p / 720p / 360p)";
       const serverId = createServer({
         episode_id: epId,
@@ -81,6 +82,7 @@ export async function POST(request: Request) {
           sourceQuality: quality.sourceQuality,
           outputDirName,
           serverId,
+          sourceKey,
         }).catch((err) => {
           console.error("[Episodes] Error during background HLS transcoding:", err);
         });

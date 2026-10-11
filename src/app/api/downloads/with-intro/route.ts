@@ -6,6 +6,7 @@ import { createReadStream } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import { Readable } from "stream";
+import { cloudKeyFor, signedMediaUrl } from "@/lib/cloudMedia";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -29,6 +30,18 @@ async function handle(request: Request, start: boolean) {
   const url = query.get("url") || "";
   const known = getDb().prepare("SELECT 1 FROM downloads WHERE download_url = ? UNION ALL SELECT 1 FROM servers WHERE stream_url = ? LIMIT 1").get(url, url);
   if (!known) return Response.json({ error: "Download not found." }, { status: 404, headers });
+  // Stored on S3 (no local copy, or cloud playback chosen): the browser downloads straight from S3.
+  // The intro cannot be joined without the local file, so S3 downloads skip it.
+  const cloudKey = cloudKeyFor(url);
+  if (cloudKey) {
+    if (start || query.has("status")) return Response.json({ status: "ready" }, { headers });
+    const name = `anime-zone-${path.basename(url, path.extname(url)).replace(/[^a-zA-Z0-9_-]/g, "_")}${path.extname(url).toLowerCase()}`;
+    try {
+      return new Response(null, { status: 302, headers: { ...headers, Location: await signedMediaUrl(cloudKey, { download: name }), "Referrer-Policy": "no-referrer" } });
+    } catch {
+      return Response.json({ error: "The video is temporarily unavailable." }, { status: 502, headers });
+    }
+  }
   try {
     const source = await localFile(url, "/uploads/");
     const settings = getSiteSettings();

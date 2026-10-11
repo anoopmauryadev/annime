@@ -4,6 +4,7 @@ import fs from "fs";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { initializeCluster } from '../../scripts/cluster/schema.cjs';
+import { initializeCloud } from '../../scripts/cloud/aws.cjs';
 
 const DB_PATH = path.join(process.cwd(), "data", "anime.db");
 
@@ -20,6 +21,7 @@ export function getDb(): Database.Database {
     _db.pragma("foreign_keys = ON");
     initializeDatabase(_db);
     initializeCluster(_db);
+    initializeCloud(_db);
   }
   return _db;
 }
@@ -1296,13 +1298,15 @@ export function createTranscodeJob(data: {
   input_path?: string;
   output_dir_name?: string;
   master_url?: string;
+  engine?: "vps" | "mediaconvert";
+  source_key?: string | null;
 }) {
   const db = getDb();
   const res = db
     .prepare(
       `INSERT INTO transcode_jobs
-       (episode_id, server_id, status, progress_text, input_path, output_dir_name, master_url, source_quality)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+       (episode_id, server_id, status, progress_text, input_path, output_dir_name, master_url, source_quality, engine, source_key)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       data.episode_id || null,
@@ -1313,6 +1317,8 @@ export function createTranscodeJob(data: {
       data.output_dir_name || null,
       data.master_url || null,
       data.source_quality || 0,
+      data.engine || "vps",
+      data.source_key || null,
     );
   return res.lastInsertRowid as number;
 }

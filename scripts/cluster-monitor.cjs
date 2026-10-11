@@ -1,7 +1,7 @@
 const Database=require('better-sqlite3'),path=require('path');
 require('@next/env').loadEnvConfig(process.cwd());
 const {initializeCluster}=require('./cluster/schema.cjs');
-const db=new Database(path.join(process.cwd(),'data/anime.db'));initializeCluster(db);
+const db=new Database(path.join(process.cwd(),'data/anime.db'));initializeCluster(db);require('./cloud/aws.cjs').initializeCloud(db);
 let stopping=false;
 for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>{stopping=true;});
 async function tick(){
@@ -16,7 +16,7 @@ async function tick(){
  }
  if(enabled){
   db.transaction(()=>{
-   for(const job of db.prepare("SELECT id FROM transcode_jobs WHERE status='pending' AND input_path IS NOT NULL AND output_dir_name IS NOT NULL").all()){
+   for(const job of db.prepare("SELECT id FROM transcode_jobs WHERE status='pending' AND input_path IS NOT NULL AND output_dir_name IS NOT NULL AND COALESCE(engine,'vps')='vps'").all()){
     db.prepare("UPDATE transcode_jobs SET status='distributed',progress_text='Queued on media workers' WHERE id=? AND status='pending'").run(job.id);
     db.prepare("UPDATE cluster_jobs SET state='pending',attempt=0,error='' WHERE parent_id=? AND state IN ('failed','cancelled')").run(job.id);
     for(const q of ['360p','480p','original'])db.prepare('INSERT OR IGNORE INTO cluster_jobs(parent_id,quality) VALUES(?,?)').run(job.id,q);

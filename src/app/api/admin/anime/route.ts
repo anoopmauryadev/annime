@@ -85,7 +85,9 @@ export async function POST(req: Request) {
         }
 
         const path = await import('path');
-        const absoluteVideoPath = path.join(process.cwd(), 'public', videoUrl);
+        // Local VPS file, or an object the browser uploaded straight to S3.
+        const { resolveUploadedVideo } = await import('@/lib/cloudMedia');
+        const { absolutePath: absoluteVideoPath, sourceKey, size: videoSize } = await resolveUploadedVideo(videoUrl);
         const serverId = createServer({
           episode_id: epId,
           server_name: (formData.get('server_name') as string) || 'Multi-Quality HD (2K / 1080p / 720p / 360p)',
@@ -99,7 +101,7 @@ export async function POST(req: Request) {
           const { createDownload } = await import('@/lib/db');
           const ext = path.extname(videoUrl || '').replace('.', '').toUpperCase() || 'MP4';
           const fs = await import('fs/promises');
-          let fileSizeMB = '100.0';
+          let fileSizeMB = videoSize ? (videoSize / (1024 * 1024)).toFixed(1) : '100.0';
           try {
             const stat = await fs.stat(absoluteVideoPath);
             fileSizeMB = (stat.size / (1024 * 1024)).toFixed(1);
@@ -124,6 +126,7 @@ export async function POST(req: Request) {
             sourceQuality: quality.sourceQuality,
             outputDirName,
             serverId,
+            sourceKey,
           }).catch((err) => {
             console.error('[Anime] Error during background HLS transcoding:', err);
           });

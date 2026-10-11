@@ -2,6 +2,7 @@ import {cancelTranscodes, cancelServerTranscodes} from "./cancelTranscodes";
 import fs from "fs";
 import path from "path";
 import { getDb } from "@/lib/db";
+import { forgetCloudMedia, forgetEpisodeFolders } from "@/lib/cloudMedia";
 
 /**
  * Safely removes a file or directory from `public/uploads`.
@@ -12,6 +13,7 @@ export function deleteLocalFileOrDir(urlOrPath?: string | null): boolean {
 
   // Only delete files under /uploads/
   if (!urlOrPath.startsWith("/uploads/")) return false;
+  forgetCloudMedia(urlOrPath.split("?")[0].split("#")[0].trim());
 
   try {
     const cleanUrl = urlOrPath.split("?")[0].split("#")[0].trim();
@@ -135,6 +137,7 @@ export async function cleanupEpisodeFiles(episodeId: number) {
     }
 
     // 4. Delete any matching HLS folder for this episode: ep_${episodeId}_*
+    forgetEpisodeFolders(episodeId);
     try {
       const hlsBase = path.join(process.cwd(), "public", "uploads", "hls");
       if (fs.existsSync(hlsBase)) {

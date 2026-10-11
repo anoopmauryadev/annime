@@ -2,6 +2,7 @@ import { saveUploadedFile, validateSavedMedia } from "@/lib/upload";
 import { createServer, createDownload } from "@/lib/db";
 import { requireAdminAuth } from "@/lib/auth";
 import { startHlsTranscoding } from "@/lib/transcoder";
+import { resolveUploadedVideo } from "@/lib/cloudMedia";
 import { NextResponse } from "next/server";
 import path from "path";
 import fs from "fs/promises";
@@ -36,15 +37,13 @@ export async function POST(request: Request) {
       videoUrl = await saveUploadedFile(videoFile, "videos");
     }
 
-    if (!videoUrl.startsWith("/uploads/videos/") || !/\.(mp4|webm|mkv|mov|avi|ts)$/i.test(videoUrl)) {
-      return NextResponse.json({ error: "Select a locally uploaded video" }, { status: 400 });
-    }
-    const root = await fs.realpath(path.join(process.cwd(), "public", "uploads", "videos"));
-    const absoluteVideoPath = await fs.realpath(path.join(process.cwd(), "public", videoUrl));
-    if (!absoluteVideoPath.startsWith(root + path.sep) || !(await fs.stat(absoluteVideoPath)).isFile()) {
-      return NextResponse.json({ error: "Invalid uploaded video path" }, { status: 400 });
-    }
-    if (uploadedVideoUrl) await validateSavedMedia(absoluteVideoPath, true);
+    // Local VPS file, or an object the browser uploaded straight to S3 (validated when the upload completed).
+    let resolved;
+    try { resolved = await resolveUploadedVideo(videoUrl); }
+    catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid uploaded video path" }, { status: 400 }); }
+    const { absolutePath: absoluteVideoPath, sourceKey, size: videoSize } = resolved;
+    const localCopy = await fs.stat(absoluteVideoPath).then(stat => stat.isFile()).catch(() => false);
+    if (uploadedVideoUrl && localCopy) await validateSavedMedia(absoluteVideoPath, true);
 
     let serverId = null;
     if (episodeId) {
@@ -64,7 +63,7 @@ export async function POST(request: Request) {
       try {
         const ext = path.extname(videoUrl || "").replace(".", "").toUpperCase() || "MP4";
         const fs = await import("fs/promises");
-        let fileSizeMB = "100.0";
+        let fileSizeMB = videoSize ? (videoSize / (1024 * 1024)).toFixed(1) : "100.0";
         try {
           const stat = await fs.stat(absoluteVideoPath);
           fileSizeMB = (stat.size / (1024 * 1024)).toFixed(1);
@@ -93,6 +92,7 @@ export async function POST(request: Request) {
           sourceQuality: quality.sourceQuality,
           outputDirName,
           serverId,
+          sourceKey,
         }).catch((err) => {
           console.error("[Upload] Error during background HLS transcoding:", err);
         });

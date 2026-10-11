@@ -3,6 +3,7 @@ import { getDb, getSiteSettings, isUserKeyActive, getServersByEpisode } from "./
 import { getUserFromRequest } from "./auth";
 import fs from "fs";
 import path from "path";
+import { cloudObject } from "./cloudMedia";
 
 // A random HttpOnly browser identity; only its hash is persisted.
 export function guestId(request: Request): string | null {
@@ -71,7 +72,8 @@ export function localMediaUrl(url: string) {
 }
 export function mediaExists(url: string) {
   if (!url.startsWith("/uploads/") || url.includes("..")) return false;
-  return fs.existsSync(path.join(process.cwd(), "public", url));
+  // Cloud rows are registered only after the upload or AWS job finished.
+  return fs.existsSync(path.join(process.cwd(), "public", url)) || !!cloudObject(url);
 }
 export function playbackServers(episodeId: number, access: ReturnType<typeof playbackAccess>) {
   if (!access.can_play) return [];
@@ -109,7 +111,9 @@ export function playbackServers(episodeId: number, access: ReturnType<typeof pla
       for (const quality of [720,1080]) {
         const fallback=folders.map(folder=>folder+quality+'p.m3u8').find(url=>{
           if(!mediaExists(url))return false;
-          const contents=fs.readFileSync(path.join(process.cwd(),'public',url),'utf8');
+          const local=path.join(process.cwd(),'public',url);
+          if(!fs.existsSync(local))return true; // Registered in S3 only once complete.
+          const contents=fs.readFileSync(local,'utf8');
           return contents.startsWith('#EXTM3U') && contents.includes('#EXT-X-ENDLIST');
         });
         if(fallback) {

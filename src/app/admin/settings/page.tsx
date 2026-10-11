@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { Lock, Eye, EyeOff, CheckCircle2, AlertTriangle, ShieldAlert, Power, Upload, Film, Clapperboard } from 'lucide-react';
 import { adminFetch } from '@/lib/adminApi';
 import AdminPlaybackSettings from '@/components/AdminPlaybackSettings';
+import AdminCloudSettings from '@/components/AdminCloudSettings';
 
 export default function AdminSettingsPage() {
   // --- Password State ---
@@ -193,6 +194,8 @@ export default function AdminSettingsPage() {
       </div>
 
       <AdminPlaybackSettings />
+
+      <AdminCloudSettings />
 
       {/* ═══════════════ Auto-Transcoding Toggle Card ═══════════════ */}
       <div className={`rounded-2xl border overflow-hidden transition-all duration-300 ${transcodeEnabled ? 'bg-[#1a1a2e] border-cyan-500/30' : 'bg-slate-950/40 border-slate-800'}`}>

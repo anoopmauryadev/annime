@@ -7,6 +7,8 @@ const root = process.cwd();
 require("@next/env").loadEnvConfig(root);
 const db = new Database(path.join(root, "data", "anime.db"));
 require('./cluster/schema.cjs').initializeCluster(db);
+const cloud = require('./cloud/aws.cjs');
+cloud.initializeCloud(db);
 db.pragma("journal_mode = WAL");
 db.pragma("busy_timeout = 5000");
 
@@ -60,6 +62,7 @@ const claimNext = db.transaction(() => {
   if(db.prepare("SELECT value FROM site_settings WHERE key='cluster_transcoding_enabled'").get()?.value==='1')return null;
   const job = db.prepare(`SELECT * FROM transcode_jobs
     WHERE status='pending' AND attempts < 3 AND input_path IS NOT NULL AND output_dir_name IS NOT NULL
+      AND COALESCE(engine,'vps')='vps'
     ORDER BY id LIMIT 1`).get();
   if (!job) return null;
   const result = db.prepare(`UPDATE transcode_jobs SET status='processing', attempts=attempts+1,
@@ -101,6 +104,14 @@ function runFfmpeg(args) {
 }
 
 async function processJob(job) {
+  // Uploaded straight to S3: bring the source to the VPS for FFmpeg.
+  if (job.source_key && !fs.existsSync(job.input_path)) {
+    const videoRoot = path.join(root, "public", "uploads", "videos");
+    if (!path.resolve(job.input_path).startsWith(videoRoot + path.sep)) throw new Error("Invalid input path");
+    updateJob(job.id, { progress_text: "Downloading source from S3..." });
+    await cloud.downloadFile(job.source_key, job.input_path);
+    assertActive();
+  }
   const { input, output } = safeJobPaths(job);
   const masterUrl = job.master_url || `/uploads/hls/${job.output_dir_name}/master.m3u8`;
   const completed = await processMedia({input,output,threads,sourceQuality:job.source_quality || 0,

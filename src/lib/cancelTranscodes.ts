@@ -2,6 +2,13 @@ import fs from 'fs';
 import path from 'path';
 import {getDb} from './db';
 
+function cancelMediaConvert(id: string) {
+  (async()=>{
+    const {MediaConvertClient,CancelJobCommand}=await import('@aws-sdk/client-mediaconvert');
+    await new MediaConvertClient({region:process.env.AWS_REGION}).send(new CancelJobCommand({Id:id}));
+  })().catch(error=>console.error('[Cancel] MediaConvert cancel failed',id,error));
+}
+
 // Wait for the worker to close FFmpeg before a source/output is removed.
 export async function cancelTranscodes(ids: number[]) {
   if (!ids.length) return;
@@ -10,6 +17,10 @@ export async function cancelTranscodes(ids: number[]) {
   // Revoking leases blocks any later remote artifact publication.
   db.prepare(`UPDATE cluster_jobs SET state='cancelled',expires=0 WHERE parent_id IN (${placeholders}) AND state IN ('pending','running')`).run(...ids);
   db.prepare(`UPDATE transcode_jobs SET status='cancelled' WHERE id IN (${placeholders}) AND status='distributed'`).run(...ids);
+  // AWS jobs have no local FFmpeg to wait for; stop the remote job and mark them cancelled now.
+  const remote=db.prepare(`SELECT external_job_id FROM transcode_jobs WHERE id IN (${placeholders}) AND engine='mediaconvert' AND status='processing' AND external_job_id IS NOT NULL`).all(...ids) as {external_job_id:string}[];
+  db.prepare(`UPDATE transcode_jobs SET status='cancelled' WHERE id IN (${placeholders}) AND engine='mediaconvert' AND status IN ('pending','processing','failed')`).run(...ids);
+  for(const job of remote) cancelMediaConvert(job.external_job_id);
   db.prepare(`UPDATE transcode_jobs SET status=CASE WHEN status='processing' THEN 'cancelling' ELSE 'cancelled' END WHERE id IN (${placeholders}) AND status IN ('pending','processing','failed')`).run(...ids);
   for(let attempt=0;attempt<100;attempt++) {
     const waiting=db.prepare(`SELECT id FROM transcode_jobs WHERE id IN (${placeholders}) AND status='cancelling'`).all(...ids);

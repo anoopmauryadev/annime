@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["better-sqlite3"],
+  serverExternalPackages: ["better-sqlite3", "@aws-sdk/client-s3", "@aws-sdk/s3-request-presigner", "@aws-sdk/cloudfront-signer", "@aws-sdk/client-mediaconvert", "@aws-sdk/lib-storage"],
   allowedDevOrigins: [
     "127.0.0.1",
     "localhost",
