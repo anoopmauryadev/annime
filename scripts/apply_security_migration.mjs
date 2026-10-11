@@ -20,7 +20,8 @@ if (fs.existsSync(backupPath)) fs.chmodSync(backupPath, 0o600);
 
 const source = fs.readFileSync(path.join(root, "src/lib/db.ts"), "utf8");
 const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
-const require = createRequire(import.meta.url);
+// Resolve db.ts imports (../../scripts/...) from db.ts itself, not from this script.
+const require = createRequire(path.join(root, "src/lib/db.ts"));
 const loaded = { exports: {} };
 new Function("require", "module", "exports", code)(require, loaded, loaded.exports);
 const database = loaded.exports.getDb();

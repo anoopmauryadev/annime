@@ -26,9 +26,10 @@ echo "📦 [1/7] Updating system & installing essential tools..."
 apt-get update -y
 apt-get install -y curl git nginx certbot python3-certbot-nginx ufw build-essential ffmpeg
 
-echo "🟢 [2/7] Installing Node.js 20 LTS & PM2..."
-if ! command -v node >/dev/null 2>&1 || [ "$(node -v | cut -d'.' -f1 | tr -d 'v')" -lt 20 ]; then
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+echo "🟢 [2/7] Installing Node.js 22 LTS & PM2..."
+# better-sqlite3 13 requires Node 22+.
+if ! command -v node >/dev/null 2>&1 || [ "$(node -v | cut -d'.' -f1 | tr -d 'v')" -lt 22 ]; then
+  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y nodejs
 fi
 npm install -g pm2
