@@ -119,6 +119,7 @@ proxy_set_header X-Forwarded-Proto $scheme;
 proxy_request_buffering off;
 proxy_buffering off;
 NGINX_UPLOAD
+install -m 644 "$APP_DIR/deploy/nginx-protected-media.conf" /etc/nginx/snippets/annime-protected-media.conf
 cat > /etc/nginx/sites-available/annime << NGINX
 server {
     listen 80;
@@ -150,22 +151,10 @@ server {
         include /etc/nginx/snippets/annime-upload.conf;
     }
 
-    # Old partial uploads must never be served as public files.
-    location ~ ^/uploads/temp(/|$) {
-        return 404;
-    }
-
-    # Protected videos and HLS must pass through application authorization.
-    location ~ ^/uploads/(videos|hls|downloads)/ {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_request_buffering off;
-        proxy_buffering off;
-    }
+    # Protected videos/HLS go straight to the authorizing /api/media handler, and
+    # old partial uploads are never served. Proxying /uploads/... to the app instead
+    # makes Next.js re-proxy over https to its own http port (EPROTO, HTTP 500).
+    include /etc/nginx/snippets/annime-protected-media.conf;
 
     # Public artwork and brand intro only.
     location /uploads/ {
