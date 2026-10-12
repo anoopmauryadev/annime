@@ -193,6 +193,12 @@ server {
         }
     }
 
+    # Anime/episode forms carry poster, backdrop and thumbnail images (20 MB each).
+    location ~ ^/api/admin/(anime|episodes)(/[0-9]+)?$ {
+        client_max_body_size 64m;
+        include /etc/nginx/snippets/annime-upload.conf;
+    }
+
     # Video & Media Upload endpoint with unbuffered streaming
     location /api/admin/ {
         proxy_pass http://127.0.0.1:3000;
