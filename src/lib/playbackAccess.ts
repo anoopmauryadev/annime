@@ -75,6 +75,12 @@ export function mediaExists(url: string) {
   // Cloud rows are registered only after the upload or AWS job finished.
   return fs.existsSync(path.join(process.cwd(), "public", url)) || !!cloudObject(url);
 }
+/** Uploaded source that may be watched by every viewer until its 360p/480p transcode is ready. */
+export function isProcessingPreview(url: string) {
+  if (getSiteSettings().processing_preview_enabled !== "1" || !url.startsWith("/uploads/videos/")) return false;
+  return !!getDb().prepare(`SELECT 1 FROM servers s JOIN transcode_jobs j ON j.server_id=s.id
+    WHERE s.stream_url=? AND j.status IN ('pending','processing','distributed') LIMIT 1`).get(url);
+}
 export function playbackServers(episodeId: number, access: ReturnType<typeof playbackAccess>) {
   if (!access.can_play) return [];
   const episodeServers = getServersByEpisode(episodeId);
@@ -88,6 +94,10 @@ export function playbackServers(episodeId: number, access: ReturnType<typeof pla
       if (!access.is_vip && !/\/(master|360p|480p)\.m3u8$/.test(playable)) return [];
       if (!access.allow_480p && playable.endsWith('/480p.m3u8')) return [];
       return mediaExists(playable) ? [{...server, stream_url:playable, server_name:access.allow_480p?"360p / 480p":"360p"}] : [];
+    }
+    // Admin option: while 360p/480p are being prepared, everyone may watch the uploaded file.
+    if (!access.original_enabled && /\.(mp4|webm)$/i.test(url) && mediaExists(url) && isProcessingPreview(url)) {
+      return [{...server,stream_url:url,server_name:"Processing preview (uploaded file)"}];
     }
     // Originals and external players may expose HD, so they require VIP.
     if (!access.original_enabled) return [];

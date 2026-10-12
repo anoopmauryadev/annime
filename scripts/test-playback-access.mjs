@@ -212,6 +212,24 @@ process.on('SIGTERM',()=>{fs.writeFileSync(${JSON.stringify(ended)},'stopped');p
   database.setSiteSettings({vip_original_enabled:'1',free_original_enabled:'0'});
   for(const name of ['original.mp4','360p.m3u8','480p.m3u8'])await fs.rename(path.join(temp,name),path.join(output,name));
   console.log('PASS: MKV HD fallback before low renditions, guest HD denial, free HD toggle and independent VIP toggle.');
+  // Processing preview: a free viewer may play the uploaded MP4 only while its transcode is unfinished and the admin option is ON.
+  const previewFile=path.join(temp,'public/uploads/videos/preview.mp4');
+  await exec('ffmpeg',['-y','-v','error','-f','lavfi','-i','testsrc2=size=640x360:rate=12','-t','2','-c:v','libx264','-pix_fmt','yuv420p',previewFile]);
+  const previewServer=database.createServer({episode_id:episode.id,server_name:'Uploading',server_type:'direct',stream_url:'/uploads/videos/preview.mp4',server_order:1});
+  const previewJob=database.createTranscodeJob({server_id:previewServer,status:'processing',input_path:previewFile,output_dir_name:'previewjob',master_url:'/uploads/hls/previewjob/master.m3u8'});
+  assert.equal((await call('/uploads/videos/preview.mp4',guest)).status,403);
+  data=await (await call('/api/episodes/'+episode.id,guest)).json();
+  assert.ok(!data.servers.some(s=>s.stream_url==='/uploads/videos/preview.mp4'));
+  database.setSiteSetting('processing_preview_enabled','1');
+  assert.equal((await call('/uploads/videos/preview.mp4',guest)).status,200);
+  assert.equal((await call('/uploads/videos/preview.mp4')).status,403,'preview still requires playback access');
+  data=await (await call('/api/episodes/'+episode.id,guest)).json();
+  assert.ok(data.servers.some(s=>s.server_name==='Processing preview (uploaded file)' && s.stream_url==='/uploads/videos/preview.mp4'));
+  db.prepare("UPDATE transcode_jobs SET status='complete' WHERE id=?").run(previewJob);
+  assert.equal((await call('/uploads/videos/preview.mp4',guest)).status,403,'preview ends when transcoding finishes');
+  database.setSiteSetting('processing_preview_enabled','0');
+  db.prepare('DELETE FROM transcode_jobs WHERE id=?').run(previewJob);db.prepare('DELETE FROM servers WHERE id=?').run(previewServer);
+  console.log('PASS: processing preview OFF by default, ON plays uploaded MP4 for free viewers with access, ends after transcoding.');
   database.updateUserVipStatus(user.id,false);
   assert.equal((await call('/uploads/hls/fixture/original.mp4',login)).status,403);
   db.prepare("UPDATE access_keys SET status='revoked' WHERE id=?").run(key.id);

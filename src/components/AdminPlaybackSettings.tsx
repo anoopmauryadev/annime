@@ -4,10 +4,10 @@ import {adminFetch} from '@/lib/adminApi';
 type Mode='login'|'all'|'preview';
 export default function AdminPlaybackSettings() {
   const [mode,setMode]=useState<Mode>('login'),[free480,setFree480]=useState(true),[original,setOriginal]=useState(true),[freeOriginal,setFreeOriginal]=useState(false);
-  const [freeDownloads,setFreeDownloads]=useState(false);
+  const [freeDownloads,setFreeDownloads]=useState(false),[preview,setPreview]=useState(false);
   const [ready,setReady]=useState(false),[saving,setSaving]=useState(false),[message,setMessage]=useState('');
   const accept=(data:Record<string,string>)=>{
-    setFreeDownloads(data.free_downloads_enabled==='1');
+    setFreeDownloads(data.free_downloads_enabled==='1');setPreview(data.processing_preview_enabled==='1');
     setMode((data.playback_guest_mode || (data.playback_login_required==='0'?'all':'login')) as Mode);
     setFree480(data.free_480p_enabled!=='0');setOriginal(data.vip_original_enabled!=='0');setFreeOriginal(data.free_original_enabled==='1');
   };
@@ -30,6 +30,7 @@ export default function AdminPlaybackSettings() {
     {toggle('Original Quality for VIP',original,false,()=>save({vip_original_enabled:original?'0':'1'}),'Allows VIP Original playback, or ready 720p/1080p when Original is unavailable. Downloads have separate controls.')}
     {toggle('Original Quality for free users',freeOriginal,false,()=>save({free_original_enabled:freeOriginal?'0':'1'}),'Allows free users Original playback, or ready 720p/1080p when Original is unavailable. Key and login rules still apply. Independent of the VIP switch.')}
     {toggle('Downloads for free users',freeDownloads,false,()=>save({free_downloads_enabled:freeDownloads?'0':'1'}),'Allows signed-in free users to download available files, including originals. Key verification applies when enabled. OFF keeps downloads VIP-only.')}
+    {toggle('Play uploaded file while processing',preview,false,()=>save({processing_preview_enabled:preview?'0':'1'}),'Until 360p/480p are ready, every viewer who may watch the episode plays the uploaded MP4/WebM directly, including free users at its full quality. When processing finishes, normal quality rules apply again. MKV/TS/MOV uploads cannot preview in browsers.')}
     {message&&<p role="status" className="mt-3 text-sm text-violet-300">{message}</p>}
   </section>;
 }

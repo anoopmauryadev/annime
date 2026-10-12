@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid settings payload" }, { status: 400 });
     }
 
-    for (const field of ['free_downloads_enabled','free_480p_enabled','vip_original_enabled','free_original_enabled','playback_login_required']) {
+    for (const field of ['free_downloads_enabled','free_480p_enabled','vip_original_enabled','free_original_enabled','playback_login_required','processing_preview_enabled']) {
       if (field in body && !['0','1'].includes(body[field])) return NextResponse.json({error:`Invalid ${field}`},{status:400});
     }
     for (const field of ['cloud_sync_enabled','cloud_delete_local']) {

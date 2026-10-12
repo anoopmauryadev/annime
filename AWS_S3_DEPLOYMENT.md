@@ -7,7 +7,7 @@ switch in **Admin → Settings → AWS storage & CDN**, and all of them default 
 | Setting | VPS | AWS |
 |---|---|---|
 | Upload destination | Resumable upload to the VPS (current behaviour) | Admin browser uploads straight to S3 (multipart, 16 MB parts) |
-| Transcoding engine | FFmpeg on the VPS | AWS MediaConvert: 360p, 480p, 720p/1080p (if the source is that big) and Original |
+| Transcoding engine | FFmpeg on the VPS | AWS MediaConvert: 360p, 480p and Original (same outputs as FFmpeg) |
 | Playback source | Serve from the VPS when a local copy exists | Serve from CloudFront (or signed S3 links) when the video is on S3 |
 | Copy VPS transcodes to S3 | — | After FFmpeg finishes, upload the HLS folder and source video to S3 |
 | Delete VPS copy after S3 upload | — | Free VPS disk once a video is safely on S3 |
@@ -153,5 +153,5 @@ To roll back, switch Playback source back to **VPS first**. Any video that still
   480p uses about 0.45 GB per viewer-hour and 720p about 1.1 GB.
 - S3 storage is about $0.025/GB-month. Transfer from S3 to CloudFront is free.
 - MediaConvert (Basic tier) costs about $0.0075/min per SD output and $0.015/min per HD output. A 24-min episode with
-  360p+480p+720p+Original costs about $1.
+  360p+480p+Original costs about $0.50–0.75.
 - Check **Billing → Credits** to see which services the credit covers and when it expires. Set an **AWS Budget alert**.

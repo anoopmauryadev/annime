@@ -44,8 +44,8 @@ const fromB64=s=>Buffer.from(s.replace(/-/g,'+').replace(/_/g,'=').replace(/~/g,
   assert.equal(re.exec('master_480p.m3u8')[1],'480p'); assert.equal(re.exec('360p.m3u8')[1],'360p'); assert.equal(re.exec('master_720p.m3u8'),null);
   // mediaconvert ladder
   const {renditionsFor}=require(path.join(root,'scripts/cloud/mediaconvert.cjs'));
-  assert.deepEqual(renditionsFor({height:1080}).map(r=>r.name),['360p','480p','720p','1080p']);
-  assert.deepEqual(renditionsFor({height:720}).map(r=>r.name),['360p','480p','720p']);
+  assert.deepEqual(renditionsFor({height:1080}).map(r=>r.name),['360p','480p']);
+  assert.deepEqual(renditionsFor({height:480}).map(r=>r.name),['360p','480p']);
   assert.deepEqual(renditionsFor({height:240}).map(r=>r.name),['360p']);
   console.log('PASS: CloudFront wildcard signing per rendition, segment filtering, S3 download presign, registry/segment mapping, safe prefix delete, MediaConvert ladder.');
 })().catch(e=>{console.error(e);process.exit(1);});

@@ -1,12 +1,10 @@
-// AWS Elemental MediaConvert: one high-quality upload in S3 becomes HLS renditions
-// (360p/480p, plus 720p/1080p when the source is that large) and an original.mp4.
+// AWS Elemental MediaConvert: one high-quality upload in S3 becomes the same outputs
+// the player uses from VPS FFmpeg: 360p/480p HLS (free) and original.mp4 (VIP HD).
 const { config } = require('./aws.cjs');
 
 const ladder = [
   { name: '360p', height: 360, maxBitrate: 800000, audio: 64000 },
   { name: '480p', height: 480, maxBitrate: 1200000, audio: 96000 },
-  { name: '720p', height: 720, maxBitrate: 2800000, audio: 128000 },
-  { name: '1080p', height: 1080, maxBitrate: 5000000, audio: 128000 },
 ];
 const even = (n) => Math.max(2, Math.round(n / 2) * 2);
 

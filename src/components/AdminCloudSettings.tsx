@@ -48,7 +48,7 @@ export default function AdminCloudSettings() {
       {choice('Upload destination','upload_target',status.uploadTarget,[{value:'vps',label:'VPS'},{value:'s3',label:'AWS S3',disabled:!status.storageReady}],
         'AWS S3: the admin browser uploads straight to the bucket, so large files do not use VPS bandwidth or disk. VPS: the current resumable upload to this server.')}
       {choice('Transcoding engine','transcode_engine',status.engine,[{value:'vps',label:'VPS (FFmpeg)'},{value:'mediaconvert',label:'AWS MediaConvert',disabled:!status.mediaConvertReady}],
-        'Upload one high-quality file. AWS MediaConvert makes 360p, 480p, 720p/1080p (when the source is that large) and Original on AWS without using VPS CPU; it is billed per output minute. VPS uses FFmpeg on this server. Auto-transcoding ON/OFF below still applies.')}
+        'Upload one high-quality file. AWS MediaConvert makes 360p, 480p and Original (VIP HD) on AWS without using VPS CPU; it is billed per output minute. VPS uses FFmpeg on this server. Auto-transcoding ON/OFF below still applies.')}
       {choice('Playback source','playback_source',status.playbackSource,[{value:'vps',label:'VPS first'},{value:'cloud',label:'AWS first',disabled:!status.storageReady}],
         'AWS first: videos stored on S3 play through CloudFront (or signed S3 links), so viewers do not use VPS bandwidth. Either way, a video that exists in only one place plays from there.')}
       {toggle('Copy VPS transcodes to S3','cloud_sync_enabled',status.syncEnabled,!status.storageReady,

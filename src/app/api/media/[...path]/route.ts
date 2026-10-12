@@ -1,4 +1,4 @@
-import { playbackAccess, mediaEpisodeId } from "@/lib/playbackAccess";
+import { playbackAccess, mediaEpisodeId, isProcessingPreview } from "@/lib/playbackAccess";
 import { createReadStream } from "fs";
 import fs from "fs/promises";
 import path from "path";
@@ -39,11 +39,13 @@ export async function GET(request: Request, context: { params: Promise<{ path: s
   if (parts.some(part => part.startsWith('.'))) return new Response(null,{status:404});
   const freeHls = parts[0] === 'hls' && parts.length === 3 && /^(master\.m3u8|(?:360p|480p)(?:\.m3u8|_\d+\.ts))$/.test(fileName);
   if (!access.can_play) return Response.json({error:access.active ? "Login required" : "Active key required"},{status:403});
-  const highPlayback = parts[0] === 'videos' || (parts[0] === 'hls' && parts.length === 3 && /^(original\.mp4|(?:720p|1080p)(?:\.m3u8|_\d+\.ts))$/.test(fileName));
+  // Admin option: uploaded source stays watchable by everyone until its transcode finishes.
+  const preview = parts[0] === 'videos' && parts.length === 2 && isProcessingPreview('/uploads/' + parts.join('/'));
+  const highPlayback = (parts[0] === 'videos' && !preview) || (parts[0] === 'hls' && parts.length === 3 && /^(original\.mp4|(?:720p|1080p)(?:\.m3u8|_\d+\.ts))$/.test(fileName));
   if (highPlayback && !access.original_enabled) return Response.json({error:"HD playback disabled or VIP required"},{status:403});
-  if (!freeHls && !highPlayback && !access.is_vip) return Response.json({error:"VIP required"},{status:403});
+  if (!freeHls && !highPlayback && !preview && !access.is_vip) return Response.json({error:"VIP required"},{status:403});
   if (!access.allow_480p && /^480p[_.]/.test(fileName)) return Response.json({error:"480p requires VIP"},{status:403});
-  if ((parts[0] === 'videos' || fileName === 'original.mp4') && !access.original_enabled) return Response.json({error:"Original playback disabled"},{status:403});
+  if (((parts[0] === 'videos' && !preview) || fileName === 'original.mp4') && !access.original_enabled) return Response.json({error:"Original playback disabled"},{status:403});
   const relative = parts.join('/');
 
   // Stored on AWS: authorization already passed, so hand out short-lived signed links.

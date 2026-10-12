@@ -385,7 +385,9 @@ function EpisodeVideoPlayer({ servers: initialServers, animeId, episodeId, title
 
   const selectedServer = servers && servers.length > 0 ? (servers[activeIdx] || servers[0]) : null;
   // Free Auto must never silently fall back to an HD source while low quality is processing.
+  // Exception: the admin-enabled processing preview of the uploaded file.
   const server = !isVip && currentLevel !== -2 && selectedServer && !/\/(master|360p|480p)\.m3u8$/.test(selectedServer.stream_url)
+    && !selectedServer.server_name.startsWith('Processing preview')
     ? servers.find(s=>/\/(master|360p|480p)\.m3u8$/.test(s.stream_url)) || null : selectedServer;
 
   // Auto-extract URL if full <iframe src="..."> code is pasted
