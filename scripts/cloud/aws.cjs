@@ -157,6 +157,14 @@ async function deletePrefix(prefix) {
 
 function encodeKey(key) { return key.split('/').map(encodeURIComponent).join('/'); }
 
+// Content-Disposition for a download: ASCII fallback plus the exact UTF-8 name (RFC 6266).
+function attachmentDisposition(name) {
+  const clean = String(name).replace(/[\u0000-\u001f<>:"/\\|?*]/g, '').replace(/\s+/g, ' ').trim().slice(0, 180) || 'Anime Zone';
+  const ascii = clean.normalize('NFKD').replace(/[^\x20-\x7e]/g, '').replace(/\s+/g, ' ').trim() || 'Anime Zone';
+  const encoded = encodeURIComponent(clean).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
 // Signed delivery URL for one object. CloudFront when configured, otherwise an S3 presigned URL.
 async function signedUrl(key, ttlSeconds = 4 * 3600, { download } = {}) {
   const c = requireStorage();
@@ -168,7 +176,7 @@ async function signedUrl(key, ttlSeconds = 4 * 3600, { download } = {}) {
   const { GetObjectCommand } = require('@aws-sdk/client-s3');
   const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
   return getSignedUrl(s3(), new GetObjectCommand({ Bucket: c.bucket, Key: key,
-    ...(download ? { ResponseContentDisposition: `attachment; filename="${download.replace(/[^a-zA-Z0-9_.-]/g, '_')}"` } : {}) }),
+    ...(download ? { ResponseContentDisposition: attachmentDisposition(download) } : {}) }),
   { expiresIn: Math.min(ttlSeconds, 7 * 24 * 3600) });
 }
 
@@ -225,5 +233,5 @@ async function abortMultipart(key, uploadId) {
 
 module.exports = {
   config, initializeCloud, registerObject, cloudObject, cloudSegmentKey, uploadFile, uploadDirectory, downloadFile,
-  getText, headObject, deleteObject, deletePrefix, signedUrl, signPlaylist, createMultipart, signParts, completeMultipart, abortMultipart, contentType,
+  getText, headObject, deleteObject, deletePrefix, signedUrl, attachmentDisposition, signPlaylist, createMultipart, signParts, completeMultipart, abortMultipart, contentType,
 };

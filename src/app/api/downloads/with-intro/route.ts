@@ -6,7 +6,7 @@ import { createReadStream } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import { Readable } from "stream";
-import { cloudKeyFor, signedMediaUrl } from "@/lib/cloudMedia";
+import { attachmentDisposition, cloudKeyFor, signedMediaUrl } from "@/lib/cloudMedia";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,6 +18,27 @@ async function localFile(url: string, folder: string) {
   const file = await fs.realpath(path.resolve(process.cwd(), "public", `.${url}`));
   if (!file.startsWith(root + path.sep) || !(await fs.stat(file)).isFile()) throw new Error("Invalid local video path");
   return file;
+}
+
+// "Naruto - S01E05 - Title [1080p] - Anime Zone.mp4"; movies drop the episode part.
+function downloadFileName(url: string, ext: string) {
+  const row = getDb().prepare(`SELECT a.title AS anime, a.type, s.season_number, e.episode_number, e.title AS episode,
+      (SELECT quality FROM downloads WHERE download_url = ? AND episode_id = e.id LIMIT 1) AS quality
+    FROM episodes e JOIN anime a ON a.id = e.anime_id LEFT JOIN seasons s ON s.id = e.season_id
+    WHERE e.id = COALESCE((SELECT episode_id FROM downloads WHERE download_url = ? LIMIT 1),
+      (SELECT episode_id FROM servers WHERE stream_url = ? LIMIT 1))`).get(url, url, url) as
+    { anime: string; type: string; season_number: number | null; episode_number: number; episode: string; quality: string | null } | undefined;
+  if (!row) return `Anime Zone${ext}`;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const parts = [row.anime];
+  if (row.type !== "movie") {
+    parts.push(`S${pad(row.season_number || 1)}E${pad(row.episode_number)}`);
+    const title = row.episode?.trim();
+    // Skip generated titles such as "Naruto 1x5" that only repeat the anime name.
+    if (title && !title.toLowerCase().startsWith(row.anime.toLowerCase())) parts.push(title);
+  }
+  const resolution = row.quality?.match(/\b(\d{3,4}p|4K|Original)\b/i)?.[1];
+  return `${parts.join(" - ")}${resolution ? ` [${resolution}]` : ""} - Anime Zone${ext}`;
 }
 
 async function handle(request: Request, start: boolean) {
@@ -35,7 +56,7 @@ async function handle(request: Request, start: boolean) {
   const cloudKey = cloudKeyFor(url);
   if (cloudKey) {
     if (start || query.has("status")) return Response.json({ status: "ready" }, { headers });
-    const name = `anime-zone-${path.basename(url, path.extname(url)).replace(/[^a-zA-Z0-9_-]/g, "_")}${path.extname(url).toLowerCase()}`;
+    const name = downloadFileName(url, path.extname(url).toLowerCase());
     try {
       return new Response(null, { status: 302, headers: { ...headers, Location: await signedMediaUrl(cloudKey, { download: name }), "Referrer-Policy": "no-referrer" } });
     } catch {
@@ -65,11 +86,11 @@ async function handle(request: Request, start: boolean) {
       if (!Number.isSafeInteger(begin) || !Number.isSafeInteger(end) || begin > end || begin < 0) return new Response(null, { status: 416, headers: { ...headers, "Content-Range": `bytes */${size}` } });
     }
     const ext = path.extname(file).toLowerCase();
-    const name = `${path.basename(source, path.extname(source)).replace(/[^a-zA-Z0-9_-]/g, "_")}${ext}`;
+    const name = downloadFileName(url, ext);
     const body = Readable.toWeb(createReadStream(file, { start: begin, end })) as ReadableStream<Uint8Array>;
     return new Response(body, { status: range ? 206 : 200, headers: {
       ...headers, "Content-Type": ext === ".mp4" ? "video/mp4" : ext === ".webm" ? "video/webm" : "application/octet-stream",
-      "Content-Disposition": `attachment; filename="anime-zone-${name}"`, "Content-Length": String(end - begin + 1), "Accept-Ranges": "bytes",
+      "Content-Disposition": attachmentDisposition(name), "Content-Length": String(end - begin + 1), "Accept-Ranges": "bytes",
       ...(range ? { "Content-Range": `bytes ${begin}-${end}/${size}` } : {}),
     } });
   } catch {

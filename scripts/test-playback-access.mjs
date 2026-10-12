@@ -165,6 +165,13 @@ process.on('SIGTERM',()=>{fs.writeFileSync(${JSON.stringify(ended)},'stopped');p
   const downloadPath='/api/downloads/with-intro?url='+encodeURIComponent('/uploads/videos/test.mkv');
   const fileResponse=await call(downloadPath,login);
   assert.equal(fileResponse.status,200);assert.ok((await fileResponse.arrayBuffer()).byteLength>0);
+  // Download names carry the anime and episode, e.g. "Naruto - S01E05 - Title - Anime Zone.mkv".
+  const named=db.prepare(`SELECT a.title AS anime, a.type, s.season_number, e.episode_number FROM episodes e
+    JOIN anime a ON a.id=e.anime_id LEFT JOIN seasons s ON s.id=e.season_id WHERE e.id=?`).get(episode.id);
+  const disposition=decodeURIComponent(fileResponse.headers.get('content-disposition').split("filename*=UTF-8''")[1]);
+  assert.ok(disposition.startsWith(named.anime),disposition);
+  if(named.type!=='movie') assert.ok(disposition.includes(`S${String(named.season_number||1).padStart(2,'0')}E${String(named.episode_number).padStart(2,'0')}`),disposition);
+  assert.ok(disposition.endsWith(' - Anime Zone.mkv'),disposition);
   assert.equal((await call(downloadPath,guest)).status,401);
 
   assert.equal((await call('/api/downloads',guest)).status,401);

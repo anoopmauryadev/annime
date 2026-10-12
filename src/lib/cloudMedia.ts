@@ -73,6 +73,8 @@ export async function signedMediaUrl(key: string, options: { download?: string }
   return aws.signedUrl(key, 6 * 3600, options);
 }
 
+export const attachmentDisposition: (name: string) => string = aws.attachmentDisposition;
+
 export async function signedPlaylist(key: string) {
   return aws.signPlaylist(await aws.getText(key), key, 6 * 3600);
 }

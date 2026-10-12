@@ -28,7 +28,12 @@ const fromB64=s=>Buffer.from(s.replace(/-/g,'+').replace(/_/g,'=').replace(/~/g,
   assert.equal(one.host,'d123.cloudfront.net'); assert.ok(one.searchParams.get('Expires') && one.searchParams.get('Signature'));
   const dl=new URL(await aws.signedUrl('videos/a.mp4',3600,{download:'anime zone"x.mp4'}));
   assert.ok(dl.host.startsWith('test-bucket.s3.'),dl.host);
-  assert.equal(dl.searchParams.get('response-content-disposition'),'attachment; filename="anime_zone_x.mp4"');
+  assert.equal(dl.searchParams.get('response-content-disposition'),`attachment; filename="anime zonex.mp4"; filename*=UTF-8''anime%20zonex.mp4`);
+  // download names: ASCII fallback plus exact UTF-8 name; unsafe characters removed
+  const cd=aws.attachmentDisposition('नारुतो: "Ep" 5/6 - Anime Zone.mp4');
+  assert.equal(cd.split('filename="')[1].split('"')[0],'Ep 56 - Anime Zone.mp4');
+  assert.equal(decodeURIComponent(cd.split("filename*=UTF-8''")[1]),'नारुतो Ep 56 - Anime Zone.mp4');
+  assert.ok(!/[\r\n]/.test(aws.attachmentDisposition('a\r\nSet-Cookie: x')));
   // registry + segment mapping
   const Database=require(path.join(root,'node_modules/better-sqlite3'));
   const db=new Database(':memory:'); db.exec("CREATE TABLE transcode_jobs(id INTEGER PRIMARY KEY)"); aws.initializeCloud(db); aws.initializeCloud(db);
