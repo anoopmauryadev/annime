@@ -536,7 +536,7 @@ export default function EpisodesPage() {
                     />
                   </div>
                   <div className="flex justify-between items-center text-xs text-slate-400">
-                    <span className="text-[11px] text-amber-400/90">📱 Screen ON rakhein</span>
+                    <span className="text-[11px] text-amber-400/90">📱 Keep the screen on</span>
                     <span>{newEpProgress.text}</span>
                   </div>
                 </div>

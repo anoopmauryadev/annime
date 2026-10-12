@@ -21,9 +21,9 @@ export default function NotFound() {
         Page Not Found!
       </h2>
       <p className="text-gray-400 text-sm sm:text-base max-w-md mb-8">
-        Yeh page exist nahi karta. Shayad link galat hai ya page delete ho gaya.
+        This page does not exist. The link may be wrong or the page may have been removed.
         <br />
-        <span className="text-[#ff640a]">Ghar wapas jao aur anime dekho! 🎌</span>
+        <span className="text-[#ff640a]">Head back home and keep watching! 🎌</span>
       </p>
 
       {/* Action Buttons */}

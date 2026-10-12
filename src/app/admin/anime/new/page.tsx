@@ -336,7 +336,7 @@ export default function NewAnimePage() {
         <div className="flex items-center space-x-6 p-4 bg-[#1a1a2e] rounded-xl border border-slate-800">
           <div className="flex-1">
             <label className="block text-sm text-slate-300 font-semibold mb-1">Priority Rank (0 - 100+)</label>
-            <p className="text-xs text-slate-400 mb-2">High number dalo taaki anime sabse upar fast dikhe!</p>
+            <p className="text-xs text-slate-400 mb-2">Higher numbers appear first in listings.</p>
             <input 
               type="number" 
               min="0" 
@@ -378,7 +378,7 @@ export default function NewAnimePage() {
                   <span className="font-bold text-violet-300">{uploadProgress.pct}%</span>
                 </div>
                 <div className="text-[11px] text-amber-400/90 flex items-center gap-1.5 pt-1">
-                  <span>📱</span> Phone se upload karte waqt: Screen on rakhein aur tab change na karein.
+                  <span>📱</span> Uploading from a phone? Keep the screen on and stay on this tab.
                 </div>
               </div>
             )}
